@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bodyguard Center</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="panel" class="hidden">
+  <aside class="side">
+    <div class="brand">
+      <div class="logo">🛡</div>
+      <div>
+        <div class="brand-name">Bodyguard<br>Center</div>
+      </div>
+    </div>
+    <nav>
+      <button class="nav active" data-tab="home"><span class="ico">⌂</span>Home</button>
+      <button class="nav" data-tab="squad"><span class="ico">👥</span>Squad</button>
+      <button class="nav" data-tab="formation"><span class="ico">⬡</span>Formation</button>
+      <button class="nav" data-tab="vehicle"><span class="ico">🚗</span>Vehicle</button>
+      <button class="nav" data-tab="settings"><span class="ico">⚙</span>Settings</button>
+    </nav>
+    <div class="side-foot">
+      <div class="kv"><span>Mode</span><b id="sideMode">Follow</b></div>
+      <div class="kv"><span>Guards</span><b id="sideCount">0 / 6</b></div>
+      <div class="keys"><b>F9</b> panel · <b>Caps</b> attack · <b>Esc</b> close</div>
+    </div>
+  </aside>
+
+  <main>
+    <header>
+      <div>
+        <h1 id="pageTitle">Overview</h1>
+        <div class="sub" id="pageSub">Squad status at a glance</div>
+      </div>
+      <div class="hdr-right">
+        <span class="pill" id="statePill">Idle</span>
+        <button class="icon" data-action="close" title="Close (Esc)">✕</button>
+      </div>
+    </header>
+
+    <!-- ============ HOME ============ -->
+    <section class="page active" data-page="home">
+      <div class="stats">
+        <div class="stat"><div class="stat-v" id="stAlive">0</div><div class="stat-l">guards alive</div></div>
+        <div class="stat"><div class="stat-v" id="stHp">–</div><div class="stat-l">avg health</div></div>
+        <div class="stat"><div class="stat-v" id="stKills">0</div><div class="stat-l">squad kills</div></div>
+        <div class="stat"><div class="stat-v" id="stFight">0</div><div class="stat-l">fighting</div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-h">Mode</div>
+        <div class="seg">
+          <button class="mode" data-mode="follow">Follow</button>
+          <button class="mode" data-mode="hold">Hold</button>
+          <button class="mode" data-mode="aggressive">Aggressive</button>
+          <button class="mode" data-mode="passive">Hold fire</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h">Quick orders</div>
+        <div class="grid3">
+          <button data-action="markattack" class="accent" title="Aim at a target in-game, press E to confirm">🎯 Mark &amp; attack</button>
+          <button data-action="markmove" class="accent" title="Aim at the ground in-game, press E to confirm">📍 Move to position</button>
+          <button data-action="warp" title="Everyone drops what they're doing and runs back to you">🏃 Rally to me</button>
+          <button data-action="cover">🛡 Take cover</button>
+          <button data-action="ceasefire">✋ Cease fire</button>
+          <button data-action="gotowp">🚩 Go to waypoint</button>
+          <button data-action="attack" title="Attack what you're aiming at right now (also Caps Lock)">⚡ Attack aimed</button>
+          <button data-action="heal">➕ Heal all</button>
+          <button data-action="driveby">🔫 Drive-by target</button>
+        </div>
+      </div>
+
+      <div class="two">
+        <div class="card">
+          <div class="card-h">Recruit</div>
+          <div class="recruit">
+            <select data-setting="recruitModel" id="recruitModel"></select>
+            <select data-setting="recruitWeapon" id="recruitWeapon"></select>
+          </div>
+          <div class="grid2" style="margin-top:8px">
+            <button data-action="spawn" class="primary">＋ Recruit one</button>
+            <button data-action="spawnfill" class="primary">Fill squad</button>
+          </div>
+          <button data-action="dismissall" class="danger block" style="margin-top:8px">Dismiss all</button>
+        </div>
+        <div class="card">
+          <div class="card-h">Event log</div>
+          <div id="log" class="log"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SQUAD ============ -->
+    <section class="page" data-page="squad">
+      <div class="card nopad">
+        <table class="tbl">
+          <thead><tr><th>Name</th><th>Loadout</th><th>Health</th><th>Armour</th><th>Kills</th><th>State</th><th>Dist</th><th></th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+        <div id="rowsEmpty" class="empty">No guards. Recruit from Home.</div>
+      </div>
+      <div class="card" id="guardDetail" style="display:none">
+        <div class="card-h">Individual orders · <span id="detName"></span></div>
+        <div class="grid3">
+          <button data-gaction="markattack" class="accent" title="Aim at a target, press E">🎯 Attack</button>
+          <button data-gaction="follow">👥 Follow</button>
+          <button data-gaction="goto" class="accent" title="Aim at the ground, press E">📍 Go to</button>
+          <button data-gaction="minimap">🗺 Mark in minimap</button>
+          <button data-gaction="sendhome">🏠 Send home</button>
+          <button data-gaction="cancel">✖ Cancel actions</button>
+          <button data-gaction="warp">🏃 Come to me</button>
+          <button data-gaction="hold">⏸ Hold here</button>
+          <button data-gaction="heal">➕ Heal</button>
+          <button data-gaction="weapon">🔫 Re-arm</button>
+          <button data-gaction="driver">🚗 Make driver</button>
+          <button data-gaction="dismiss" class="danger">Dismiss</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ FORMATION ============ -->
+    <section class="page" data-page="formation">
+      <div class="two wide">
+        <div class="card">
+          <div class="card-h">Formation configuration</div>
+          <div class="seg five">
+            <button class="form" data-formation="0">Loose</button>
+            <button class="form" data-formation="1">Circle</button>
+            <button class="form" data-formation="2">Wedge</button>
+            <button class="form" data-formation="3">Line</button>
+            <button class="form" data-formation="4">Custom</button>
+          </div>
+          <div class="slider-row">
+            <span>Spacing</span>
+            <input type="range" min="1" max="5" step="0.5" id="spacing" data-setting="spacing">
+            <span id="spacingVal">1.8 m</span>
+          </div>
+          <div class="hint-inline" id="formHint">Drag a guard dot to place it, then press <b>Apply</b> and the squad walks into the new shape. You are the white dot; "up" is the direction you move. Only living guards are shown.</div>
+          <div class="grid2" style="margin-top:8px">
+            <button id="formReset">↺ Start from current preset</button>
+            <button id="formMirror">⇋ Mirror left/right</button>
+          </div>
+          <button id="formApply" class="primary block" style="margin-top:8px" disabled>✔ Apply formation</button>
+        </div>
+        <div class="card">
+          <div class="card-h">Editor <span class="muted">1 square = 1 m</span></div>
+          <svg id="formGrid" viewBox="0 0 320 320" width="320" height="320"></svg>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ VEHICLE ============ -->
+    <section class="page" data-page="vehicle">
+      <div class="two wide">
+        <div class="card">
+          <div class="card-h">Seat configuration</div>
+          <div class="hint-inline">Pick who sits where when you drive. The <b>Driver</b> seat makes that guard your chauffeur: when you get in, they take the wheel and drive to your waypoint (or wait for one).</div>
+          <div class="car">
+            <div class="car-body">
+              <div class="seat drv" data-seat="-1"><label>Driver</label><select data-seat-sel="-1"></select></div>
+              <div class="seat p0"  data-seat="0"><label>Front</label><select data-seat-sel="0"></select></div>
+              <div class="seat p1"  data-seat="1"><label>Rear L</label><select data-seat-sel="1"></select></div>
+              <div class="seat p2"  data-seat="2"><label>Rear R</label><select data-seat-sel="2"></select></div>
+              <div class="seat p3"  data-seat="3"><label>Seat 4</label><select data-seat-sel="3"></select></div>
+              <div class="seat p4"  data-seat="4"><label>Seat 5</label><select data-seat-sel="4"></select></div>
+            </div>
+          </div>
+          <div class="grid2">
+            <button data-action="enter">⬇ Everyone get in</button>
+            <button data-action="exit">⬆ Everyone get out</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-h">Driving</div>
+          <div class="seg five styles">
+            <button class="style" data-style="calm">Calm</button>
+            <button class="style" data-style="normal">Normal</button>
+            <button class="style" data-style="rushed">Rushed</button>
+            <button class="style" data-style="reckless">Reckless</button>
+            <button class="style" data-style="insane">Insane</button>
+          </div>
+          <div class="hint-inline" id="styleInfo"></div>
+          <div class="grid2" style="margin-top:8px">
+            <button data-action="chauffeur">🧭 Drive to waypoint</button>
+            <button data-action="cruise">🛣 Cruise around</button>
+            <button data-action="swapdriver">🔁 Swap driver</button>
+            <button data-action="stopdrive">🛑 Stop driving</button>
+          </div>
+          <div class="card-h" style="margin-top:14px">Escort &amp; air</div>
+          <div class="recruit">
+            <select data-setting="escortVehicle" id="escortVehicle"></select>
+            <button data-action="escort" id="escortBtn" class="toggle">🚙 Escort car</button>
+          </div>
+          <div class="grid2" style="margin-top:8px">
+            <button data-action="air" id="airBtn" class="toggle">🚁 Air support</button>
+            <button data-action="driveby">🔫 Drive-by target</button>
+          </div>
+          <label class="switch"><input type="checkbox" data-toggle="autodriveby" id="autoDriveBy"><span class="track"><span class="knob"></span></span><span>Auto drive-by on hostiles</span></label>
+          <div id="driveStatus" class="status"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SETTINGS ============ -->
+    <section class="page" data-page="settings">
+      <div class="two wide">
+        <div class="card">
+          <div class="card-h">Squad</div>
+          <label class="switch"><input type="checkbox" data-toggle="invincible"><span class="track"><span class="knob"></span></span><span>Invincible guards</span></label>
+          <label class="switch"><input type="checkbox" data-toggle="regen"><span class="track"><span class="knob"></span></span><span>Health regeneration out of combat</span></label>
+          <label class="switch"><input type="checkbox" data-toggle="reinforce"><span class="track"><span class="knob"></span></span><span>Auto-reinforce fallen guards</span></label>
+          <label class="switch"><input type="checkbox" data-toggle="blips"><span class="track"><span class="knob"></span></span><span>Show guards on minimap</span></label>
+          <div class="slider-row">
+            <span>Accuracy</span>
+            <input type="range" min="10" max="100" step="5" id="accuracy" data-setting="accuracy">
+            <span id="accuracyVal">85</span>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-h">Panel</div>
+          <div class="seg">
+            <button class="pos" data-pos="left">Left</button>
+            <button class="pos" data-pos="center">Center</button>
+            <button class="pos" data-pos="right">Right</button>
+          </div>
+          <div class="seg" style="margin-top:8px">
+            <button class="scale" data-scale="0.85">Small</button>
+            <button class="scale" data-scale="1">Normal</button>
+            <button class="scale" data-scale="1.15">Large</button>
+          </div>
+          <div class="hint-inline">Keys: <b>F9</b> panel · <b>Caps Lock</b> attack what you aim at · <b>Esc</b> close. Rebind in Settings › Key Bindings › FiveM.</div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
