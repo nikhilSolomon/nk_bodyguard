@@ -3,6 +3,22 @@
 NPC bodyguards for FiveM (ESX Legacy + oxmysql) with a **Bodyguard Agency** where players hire
 contracted guards, and an in-game **Bodyguard Center** panel to command them.
 
+![Bodyguard Center – overview](assets/screenshots/01-home-admin.png)
+
+## Screenshots
+
+| Squad & individual orders | Formation editor |
+|---|---|
+| ![Squad](assets/screenshots/02-squad.png) | ![Formation](assets/screenshots/03-formation.png) |
+
+| Vehicle: seats, chauffeur, escort, air | Settings |
+|---|---|
+| ![Vehicle](assets/screenshots/04-vehicle.png) | ![Settings](assets/screenshots/05-settings.png) |
+
+![Bodyguard Agency hiring screen](assets/screenshots/06-agency.png)
+
+![Citizen view with paid services](assets/screenshots/07-home-citizen.png)
+
 ## Features
 
 ### Bodyguard Agency (citizens)
