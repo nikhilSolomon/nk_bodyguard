@@ -1,4 +1,44 @@
 const $ = (s) => document.querySelector(s);
+
+// ---------- inline icon set (stroke icons, 24x24 viewBox) ----------
+const ICONS = {
+  home:    '<path d="M3 11l9-8 9 8v9a2 2 0 0 1-2 2h-4v-7H9v7H5a2 2 0 0 1-2-2z"/>',
+  users:   '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14.5a5 5 0 0 1 5.5 5.5"/>',
+  hexagon: '<path d="M12 2.5l8.2 4.7v9.6L12 21.5l-8.2-4.7V7.2z"/>',
+  car:     '<path d="M4 16v-4.5L6.2 6h11.6L20 11.5V16"/><path d="M3 16h18"/><circle cx="7.5" cy="17.5" r="1.8"/><circle cx="16.5" cy="17.5" r="1.8"/>',
+  sliders: '<path d="M4 7h10M18 7h2M4 12h3M11 12h9M4 17h12"/><circle cx="16" cy="7" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="18" cy="17" r="2"/>',
+  x:       '<path d="M18 6L6 18M6 6l12 12"/>',
+  target:  '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
+  pin:     '<path d="M12 22s7-6.3 7-12a7 7 0 0 0-14 0c0 5.7 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/>',
+  rally:   '<circle cx="13" cy="3.5" r="1.5"/><path d="M6 22l3.5-7 2.5 2.5V22M14 13.5l4-1.5-1.5-4-3.5 1.5-2 3.5M9.5 8L6 9.5v3"/>',
+  shield:  '<path d="M12 2.5l8 3v6.5c0 5-3.4 9.2-8 11-4.6-1.8-8-6-8-11V5.5z"/>',
+  hand:    '<path d="M8 12.5V5.5a1.5 1.5 0 0 1 3 0v6M11 11V3.5a1.5 1.5 0 0 1 3 0V11M14 11.5V5.5a1.5 1.5 0 0 1 3 0V13"/><path d="M17 12.5a1.5 1.5 0 0 1 3 0V15a7 7 0 0 1-7 7h-1a7 7 0 0 1-6-3.3L4 14.6a1.6 1.6 0 0 1 2.6-1.9L8 14.5"/>',
+  flag:    '<path d="M5 22V4h12l-2.5 4.5L17 13H5"/>',
+  zap:     '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
+  medic:   '<rect x="3" y="5" width="18" height="15" rx="3"/><path d="M12 9v7M8.5 12.5h7"/>',
+  gun:     '<path d="M3 9h14l4-2v4l-4-2M6 9v6h3.5l1.2-3M17 9v2.5"/>',
+  plus:    '<path d="M12 5v14M5 12h14"/>',
+  map:     '<path d="M2 6.5v15l6.5-3 7 3 6.5-3v-15l-6.5 3-7-3zM8.5 3.5v15M15.5 6.5v15"/>',
+  pause:   '<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>',
+  wheel:   '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/><path d="M12 3v6.5M4.2 15.5l6-2M19.8 15.5l-6-2"/>',
+  rotate:  '<path d="M2 5v6h6"/><path d="M3.5 15a9 9 0 1 0 2-9.5L2 11"/>',
+  mirror:  '<path d="M12 2v20M4 7.5l4 4.5-4 4.5M20 7.5l-4 4.5 4 4.5"/>',
+  check:   '<path d="M20 6L9 17l-5-5"/>',
+  down:    '<path d="M12 4v15M5 12l7 7 7-7"/>',
+  up:      '<path d="M12 20V5M5 12l7-7 7 7"/>',
+  compass: '<circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2.2 5-5 2.2 2.2-5z"/>',
+  road:    '<path d="M4.5 21l4-18M19.5 21l-4-18M12 3v3.5M12 10v4M12 17.5V21"/>',
+  repeat:  '<path d="M17 2l4 4-4 4"/><path d="M3 11V9.5A3.5 3.5 0 0 1 6.5 6H21"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1.5a3.5 3.5 0 0 1-3.5 3.5H3"/>',
+  stop:    '<rect x="5" y="5" width="14" height="14" rx="2.5"/>',
+  truck:   '<path d="M2 4.5h13v12H2zM15 9h4l3 3.5V16.5h-7"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/>',
+  heli:    '<path d="M3 4h17M11.5 4v4M4 12.5h11a4 4 0 0 1 4 4V18H9.5l-5.5-5.5zM9 21h9"/>',
+};
+const iconSvg = (name) => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ''}</svg>`;
+function applyIcons(root) {
+  (root || document).querySelectorAll('i[data-icon]').forEach(i => { if (!i.firstChild) i.innerHTML = iconSvg(i.dataset.icon); });
+}
+applyIcons();
+
 const panel = $('#panel');
 const resName = (typeof GetParentResourceName === 'function') ? GetParentResourceName() : 'nk_bodyguard';
 
@@ -246,12 +286,13 @@ function renderShop(d) {
       <div class="tier-top"><span class="tier-name">${t.label}</span><span class="tier-price">${money(t.price)}</span></div>
       <div class="tier-desc">${t.desc}</div>
       ${srow('Health', t.health, maxH)}${srow('Armour', t.armour, maxA)}${srow('Accuracy', t.accuracy, 100)}
-      <div class="tier-weapon">🔫 ${t.weapon}</div>
+      <div class="tier-weapon"><i data-icon="gun"></i>${t.weapon}</div>
       <select data-outfit="${t.id}">${opts}</select>
       <button class="hire" data-hire="${t.id}" ${(!afford || full) ? 'disabled' : ''}>${label}</button>
     </div>`;
   }).join('');
   $('#shopServices').innerHTML = `Services (F9 panel):<span>Escort car <b>${money(d.services.escort)}</b></span><span>Air support <b>${money(d.services.air)}</b></span><span>Medic <b>${money(d.services.heal)}</b>/guard</span>`;
+  applyIcons(shop);
 }
 
 window.addEventListener('message', (e) => {

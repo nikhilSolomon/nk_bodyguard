@@ -5,7 +5,7 @@ lua54 'yes'
 name 'nk_bodyguard'
 description 'NPC bodyguards: Bodyguard Agency contracts, squad control panel, formations, chauffeur, escort, air support'
 author 'Nikhil'
-version '5.0.0'
+version '5.1.0'
 
 ui_page 'html/index.html'
 
