@@ -40,10 +40,13 @@ SetRelationshipBetweenGroups(0, PLAYER_REL, GUARD_REL)
 ---------------------------------------------------------------------------
 -- utils
 ---------------------------------------------------------------------------
-local function notify(msg)
-    BeginTextCommandThefeedPost('STRING')
-    AddTextComponentSubstringPlayerName(msg)
-    EndTextCommandThefeedPostTicker(false, false)
+-- all client notifications go through client/notify.lua (Config.Notify)
+local function notify(msg, kind)
+    if not kind then
+        local s = tostring(msg)
+        kind = s:find('~r~', 1, true) and 'error' or (s:find('~y~', 1, true) and 'warning' or (s:find('~g~', 1, true) and 'success' or 'inform'))
+    end
+    Notify(msg, kind)
 end
 
 local function dbg(fmt, ...)
@@ -2010,8 +2013,27 @@ RegisterNetEvent('nk_bodyguard:init', function(d)
     end)
 end)
 
+-- hooks for client/phone.lua (exports + events)
+BG_OpenPanel   = function() if not shopOpen then openPanel() end end
+BG_ClosePanel  = function() if panelOpen then closePanel() end end
+BG_TogglePanel = function() if panelOpen then closePanel() elseif not shopOpen then openPanel() end end
+BG_OpenAgency  = function() if not panelOpen then openShop() end end
+BG_IsAdmin     = function() return isAdmin end
+BG_GetSquad    = function()
+    local out = {}
+    for _, g in ipairs(guards) do
+        local ex = DoesEntityExist(g.ped)
+        out[#out + 1] = {
+            name = g.name, tier = g.tier, rank = g.rank, kills = g.kills or 0, contract = g.contract,
+            health = ex and GetEntityHealth(g.ped) or 0, armour = ex and GetPedArmour(g.ped) or 0,
+            state = guardState(g), ped = g.ped,
+        }
+    end
+    return out
+end
+
 -- character logout / switch (multicharacter): remove the peds, keep the contracts
-RegisterNetEvent('esx:onPlayerLogout', function()
+RegisterNetEvent(Bridge and Bridge.PlayerLogoutEvent or 'esx:onPlayerLogout', function()
     if panelOpen then closePanel() end
     if shopOpen then closeShop() end
     dismissAll('logout', false)

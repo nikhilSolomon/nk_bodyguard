@@ -1,5 +1,5 @@
--- nk_bodyguard server: roles, Agency contracts (oxmysql), paid services, chat command
-ESX = exports['es_extended']:getSharedObject()
+-- nk_bodyguard server: roles, Agency contracts (oxmysql), paid services, chat command.
+-- Framework access goes through Bridge (bridge/<framework>/server.lua); nothing here is ESX-specific.
 
 ---------------------------------------------------------------------------
 -- schema
@@ -29,12 +29,8 @@ end)
 ---------------------------------------------------------------------------
 local function isAdmin(src)
     if IsPlayerAceAllowed(src, 'command.' .. Config.Command) then return true end
-    local x = ESX.GetPlayerFromId(src)
-    if x then
-        local grp = x.getGroup()
-        for _, g in ipairs(Config.AdminGroups) do if g == grp then return true end end
-    end
-    return false
+    local x = Bridge.GetPlayer(src)
+    return x ~= nil and Bridge.IsAdminGroup(x.group)
 end
 
 local function money(n)
@@ -44,10 +40,7 @@ end
 
 local function balance(x)
     local total = 0
-    for _, acc in ipairs(Config.Agency.Accounts) do
-        local a = x.getAccount(acc)
-        if a then total = total + (a.money or 0) end
-    end
+    for _, acc in ipairs(Config.Agency.Accounts) do total = total + x.getBalance(acc) end
     return total
 end
 
@@ -55,9 +48,8 @@ end
 local function charge(x, amount, reason)
     if amount <= 0 then return true end
     for _, acc in ipairs(Config.Agency.Accounts) do
-        local a = x.getAccount(acc)
-        if a and (a.money or 0) >= amount then
-            x.removeAccountMoney(acc, amount, reason)
+        if x.getBalance(acc) >= amount then
+            x.removeMoney(acc, amount, reason)
             return true
         end
     end
@@ -65,7 +57,7 @@ local function charge(x, amount, reason)
 end
 
 local function refund(x, amount, reason)
-    if amount > 0 then x.addAccountMoney(Config.Agency.Accounts[1], amount, reason) end
+    if amount > 0 then x.addMoney(Config.Agency.Accounts[1], amount, reason) end
 end
 
 local function tierById(id)
@@ -92,7 +84,7 @@ local function reply(src, reqId, ok, msg, extra)
 end
 
 local function sendInit(src)
-    local x = ESX.GetPlayerFromId(src)
+    local x = Bridge.GetPlayer(src)
     TriggerClientEvent('nk_bodyguard:init', src, {
         admin = isAdmin(src),
         loaded = x ~= nil,
@@ -106,11 +98,16 @@ end
 ---------------------------------------------------------------------------
 -- client (re)started or character loaded: send role + active contracts
 RegisterNetEvent('nk_bodyguard:hello', function() sendInit(source) end)
-AddEventHandler('esx:playerLoaded', function(src) SetTimeout(1500, function() sendInit(src) end) end)
+Bridge.OnPlayerLoaded(function(src) SetTimeout(1500, function() sendInit(src) end) end)
+Bridge.OnGroupChanged(function(src) SetTimeout(500, function() sendInit(src) end) end)
+
+-- other resources (Tebex delivery, admin tools) can ask for a re-sync after changing contracts
+RegisterNetEvent('nk_bodyguard:resync', function(src) sendInit(tonumber(src) or source) end)
+exports('Resync', function(src) sendInit(src) end)
 
 RegisterNetEvent('nk_bodyguard:balance', function(reqId)
     local src = source
-    local x = ESX.GetPlayerFromId(src)
+    local x = Bridge.GetPlayer(src)
     if not x then return reply(src, reqId, false, 'Character not loaded') end
     reply(src, reqId, true, '', { balance = balance(x), active = #activeContracts(x.identifier), admin = isAdmin(src) })
 end)
@@ -118,7 +115,7 @@ end)
 -- hire a guard at the Agency
 RegisterNetEvent('nk_bodyguard:hire', function(reqId, tierId, outfitIdx)
     local src = source
-    local x = ESX.GetPlayerFromId(src)
+    local x = Bridge.GetPlayer(src)
     if not x then return reply(src, reqId, false, 'Character not loaded') end
     local tier = tierById(tierId)
     if not tier then return reply(src, reqId, false, 'Unknown contract') end
@@ -155,7 +152,7 @@ end)
 -- pay for a service (escort / air / healPerGuard)
 RegisterNetEvent('nk_bodyguard:pay', function(reqId, service, qty)
     local src = source
-    local x = ESX.GetPlayerFromId(src)
+    local x = Bridge.GetPlayer(src)
     if not x then return reply(src, reqId, false, 'Character not loaded') end
     local unit = Config.Services[service]
     if not unit then return reply(src, reqId, false, 'Unknown service') end
@@ -169,7 +166,7 @@ end)
 
 -- guard killed / dismissed / sent home: contract is over
 RegisterNetEvent('nk_bodyguard:contractEnd', function(id, reason)
-    local x = ESX.GetPlayerFromId(source)
+    local x = Bridge.GetPlayer(source)
     if not x then return end
     reason = (reason == 'killed') and 'killed' or 'dismissed'
     MySQL.update('UPDATE `nk_bodyguard_contracts` SET `status` = ?, `ended_at` = NOW() WHERE `id` = ? AND `identifier` = ? AND `status` = ?',
@@ -178,7 +175,7 @@ end)
 
 -- veterancy: a contracted guard scored a kill
 RegisterNetEvent('nk_bodyguard:kill', function(id)
-    local x = ESX.GetPlayerFromId(source)
+    local x = Bridge.GetPlayer(source)
     if not x then return end
     MySQL.update('UPDATE `nk_bodyguard_contracts` SET `kills` = `kills` + 1 WHERE `id` = ? AND `identifier` = ? AND `status` = ?',
         { tonumber(id), x.identifier, 'active' })

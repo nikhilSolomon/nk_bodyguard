@@ -40,7 +40,8 @@ function applyIcons(root) {
 applyIcons();
 
 const panel = $('#panel');
-const resName = (typeof GetParentResourceName === 'function') ? GetParentResourceName() : 'nk_bodyguard';
+const inGame = (typeof GetParentResourceName === 'function');
+const resName = inGame ? GetParentResourceName() : 'nk_bodyguard';
 
 let lastData = null;
 let selected = null;        // selected guard index (Squad page)
@@ -404,3 +405,58 @@ function onKey(e) {
 }
 window.addEventListener('keydown', onKey);
 window.addEventListener('keyup', onKey);
+
+// ---------- demo mode (outside FiveM): ?demo=1&tab=squad&role=citizen|admin&shop=1 ----------
+// Used for store screenshots and the assets/showcase.html gallery. Never active in game.
+(function demo() {
+  if (inGame) return;
+  const q = new URLSearchParams(location.search);
+  if (!q.has('demo')) return;
+  const role = q.get('role') || 'admin';
+  const now = Date.now();
+  const guards = [
+    { index: 1, name: 'Marcus', tier: 'Professional', tierColor: '#3b82f6', rank: 'Veteran', contract: true, weapon: 'SMG', kills: 6, health: 300, maxHealth: 350, armour: 100, maxArmour: 100, distance: 0, state: 'Driving', dead: false },
+    { index: 2, name: 'Viktor', tier: 'Elite', tierColor: '#8b5cf6', rank: 'Recruit', contract: true, weapon: 'Carbine Rifle', kills: 1, health: 140, maxHealth: 500, armour: 0, maxArmour: 200, distance: 6, state: 'Firing', dead: false },
+    { index: 3, name: 'Rico', tier: 'Heavy Gunner', tierColor: '#ef4444', rank: 'Legend', contract: true, weapon: 'Combat MG', kills: 17, health: 500, maxHealth: 700, armour: 300, maxArmour: 300, distance: 14, state: 'Escorting', dead: false },
+    { index: 4, name: 'Logan', tier: 'Rookie', tierColor: '#94a3b8', rank: 'Recruit', contract: true, weapon: 'Pistol .50', kills: 0, health: 200, maxHealth: 200, armour: 50, maxArmour: 50, distance: 3, state: 'Following', dead: false },
+  ];
+  const data = {
+    type: 'update', admin: role === 'admin',
+    agency: { name: 'Bodyguard Agency', active: 4, max: role === 'admin' ? 6 : 4, prices: { escort: 2500, air: 10000, heal: 750 } },
+    max: 6, mode: 'follow', formation: 2, driveStyle: 'rushed', autoDriveBy: true, escort: true, air: false,
+    driveStatus: 'Marcus → waypoint, 640 m · Escort 14 m', styleInfo: '<b>Rushed</b>: 180 km/h target, +15% top speed. Applies to chauffeur, cruise and escort.',
+    log: [
+      { t: now - 95000, msg: 'Viktor signed (Elite) for $15,000', kind: '' },
+      { t: now - 61000, msg: 'Squad moving to position', kind: 'hot' },
+      { t: now - 32000, msg: 'Attack order: 3 guard(s) engaging', kind: 'hot' },
+      { t: now - 14000, msg: 'Marcus promoted to Veteran', kind: 'hot' },
+      { t: now - 5000, msg: 'Target vehicle destroyed', kind: 'hot' },
+    ],
+    settings: { recruitModel: 'swat', recruitWeapon: 'random', escortVehicle: 'insurgent', spacing: 1.8, accuracy: 85, invincible: false, regen: true, reinforce: true, blips: true, pos: 'center', scale: 1, customOffsets: {}, seats: { '-1': 'Marcus', '0': 'Viktor', '1': 'Rico', '2': 'Logan' } },
+    options: { models: [{ id: 'blackops1', label: 'Blackops' }, { id: 'swat', label: 'SWAT' }], weapons: [{ id: 'carbine', label: 'Carbine Rifle' }, { id: 'rpg', label: 'RPG' }], escortVehicles: [{ id: 'granger', label: 'Granger' }, { id: 'insurgent', label: 'Insurgent' }] },
+    guards,
+  };
+  const shopData = {
+    name: 'Bodyguard Agency', admin: false, balance: 18400, active: 3, max: 4, squad: 3, squadMax: 6,
+    services: { escort: 2500, air: 10000, heal: 750 },
+    tiers: [
+      { id: 'rookie', label: 'Rookie', color: '#94a3b8', price: 2500, desc: "Private security. Cheap, keeps trouble at arm's length.", weapon: 'Pistol .50', health: 300, armour: 50, accuracy: 45, outfits: ['Security', 'Securoguard'] },
+      { id: 'pro', label: 'Professional', color: '#3b82f6', price: 7500, desc: 'Trained close-protection officer in a sharp suit.', weapon: 'SMG', health: 450, armour: 100, accuracy: 65, outfits: ['Suit', 'Suit II'] },
+      { id: 'elite', label: 'Elite', color: '#8b5cf6', price: 15000, desc: 'Ex-special forces operator. Professional, hard to put down.', weapon: 'Carbine Rifle', health: 600, armour: 200, accuracy: 80, outfits: ['Black Ops', 'Black Ops II'] },
+      { id: 'heavy', label: 'Heavy Gunner', color: '#ef4444', price: 25000, desc: 'Armoured tactical unit with a light machine gun.', weapon: 'Combat MG', health: 800, armour: 200, accuracy: 70, outfits: ['SWAT'] },
+    ],
+  };
+  document.body.style.background = q.get('bg') || 'transparent';
+  if (q.get('shop') === '1') {
+    window.postMessage({ type: 'shop', open: true, data: shopData }, '*');
+    return;
+  }
+  window.postMessage({ type: 'open' }, '*');
+  window.postMessage(data, '*');
+  const tab = q.get('tab');
+  if (tab) {
+    const b = document.querySelector(`.nav[data-tab="${tab}"]`);
+    if (b) b.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 5, clientY: 5, detail: 1 }));
+    if (tab === 'squad') { selected = 2; render(data); }
+  }
+})();

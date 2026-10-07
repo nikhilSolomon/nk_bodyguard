@@ -158,3 +158,21 @@ Config.AutoReinforce = false     -- recruit a replacement when a guard dies
 Config.ReinforceDelay = 6000     -- ms
 Config.HealthRegen = false       -- guards slowly regenerate when not fighting
 Config.RegenPerTick = 6          -- hp every 2 s
+
+---------------------------------------------------------------------------
+-- INTEGRATION
+---------------------------------------------------------------------------
+-- Framework bridge. Only 'esx' ships for now; see bridge/esx/*.lua to add another.
+Config.Framework = 'esx'
+
+-- Notifications: 'native' (GTA feed), 'esx', 'ox_lib', 'okok', 'mythic' or 'custom'
+-- ('custom' = edit CustomNotify in client/notify.lua)
+Config.Notify = { Type = 'esx', Title = 'Bodyguards' }
+
+-- Phone / external open hook. See client/phone.lua for exports and events.
+Config.Phone = {
+    Enabled = false,
+    Resource = 'lb-phone',              -- 'lb-phone' registers a custom app automatically; anything else uses OpenEvent
+    OpenEvent = 'nk_bodyguard:toggle',  -- event your phone / app fires to open or close the panel
+    Icon = '',                          -- app icon URL for lb-phone (replace with your own)
+}

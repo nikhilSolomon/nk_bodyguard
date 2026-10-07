@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>nk_bodyguard – Showcase</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#0b0e14; --card:#121722; --line:rgba(255,255,255,.08); --text:#e9edf5; --muted:#8b95a8; --accent:#4f7cff; --violet:#8b5cf6; --green:#22c55e; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:radial-gradient(1200px 600px at 50% -10%, rgba(79,124,255,.18), transparent 60%), var(--bg); color:var(--text); font-family:Inter,"Segoe UI",sans-serif; }
+  .wrap { max-width:1180px; margin:0 auto; padding:56px 24px 80px; }
+  .hero { display:flex; align-items:center; gap:22px; margin-bottom:12px; }
+  .hero svg { width:72px; height:72px; filter:drop-shadow(0 10px 30px rgba(79,124,255,.4)); }
+  h1 { font-size:40px; font-weight:800; letter-spacing:-.03em; line-height:1; }
+  h1 span { background:linear-gradient(90deg,var(--accent),var(--violet)); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .lead { font-size:17px; color:var(--muted); max-width:760px; line-height:1.5; margin:14px 0 26px; }
+  .pills { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:46px; }
+  .pill { font-size:12px; font-weight:600; padding:6px 12px; border-radius:999px; border:1px solid var(--line); background:var(--card); color:var(--muted); }
+  .pill.b { color:#9db4ff; border-color:rgba(79,124,255,.4); } .pill.g { color:#86efac; border-color:rgba(34,197,94,.4); } .pill.v { color:#c4b5fd; border-color:rgba(139,92,246,.4); }
+  .grid { display:grid; grid-template-columns:repeat(2,1fr); gap:18px; }
+  .shot { background:var(--card); border:1px solid var(--line); border-radius:16px; overflow:hidden; }
+  .shot img { display:block; width:100%; height:auto; }
+  .shot .cap { padding:14px 16px 16px; border-top:1px solid var(--line); }
+  .shot h3 { font-size:15px; font-weight:700; margin-bottom:4px; }
+  .shot p { font-size:13px; color:var(--muted); line-height:1.5; }
+  .wide { grid-column:1 / -1; }
+  h2 { font-size:22px; font-weight:800; letter-spacing:-.02em; margin:54px 0 16px; }
+  .feat { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+  .f { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; }
+  .f b { display:block; font-size:14px; margin-bottom:6px; }
+  .f p { font-size:12.5px; color:var(--muted); line-height:1.5; }
+  code { font-family:Consolas,monospace; font-size:12px; background:#182030; padding:2px 6px; border-radius:6px; }
+  footer { margin-top:50px; font-size:12px; color:var(--muted); border-top:1px solid var(--line); padding-top:18px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero">
+    <svg viewBox="0 0 48 48" aria-hidden="true">
+      <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4f7cff"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs>
+      <path d="M24 4l16 6v12c0 10-6.8 18.6-16 22C14.8 40.6 8 32 8 22V10z" fill="url(#g)"/>
+      <path d="M24 9.5l11 4.2V22c0 7.4-4.7 13.9-11 16.7C17.7 35.9 13 29.4 13 22v-8.3z" fill="#0b0e14" opacity=".55"/>
+      <path d="M17 24.5l5 5 9.5-11" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <h1>nk_bodyguard<br><span>Bodyguard Center</span></h1>
+  </div>
+  <p class="lead">Hireable NPC bodyguards for FiveM with a modern command panel. Players sign contracts at the Bodyguard Agency; admins command for free. Formations, chauffeur, escort car, air support and marked-target attacks, all without a single teleport.</p>
+  <div class="pills">
+    <span class="pill b">ESX Legacy</span><span class="pill">oxmysql</span><span class="pill g">Contracts saved in DB</span>
+    <span class="pill v">Custom NUI</span><span class="pill">Custom notifications</span><span class="pill">Phone exports</span><span class="pill">Lua 5.4</span>
+  </div>
+
+  <div class="grid">
+    <div class="shot wide"><img src="screenshots/01-home-admin.png" alt="Home overview"><div class="cap"><h3>Overview</h3><p>Live stats, squad mode, quick orders and an event log. Admins recruit for free; citizens see their Agency contracts.</p></div></div>
+    <div class="shot"><img src="screenshots/02-squad.png" alt="Squad page"><div class="cap"><h3>Squad &amp; individual orders</h3><p>Health, armour, kills, tier and rank per guard. Attack, Go to, Follow, Hold, Send home, Medic, Make driver.</p></div></div>
+    <div class="shot"><img src="screenshots/03-formation.png" alt="Formation editor"><div class="cap"><h3>Formation editor</h3><p>Loose, Circle, Wedge, Line or drag your own custom formation on a 1 m grid and apply it.</p></div></div>
+    <div class="shot"><img src="screenshots/04-vehicle.png" alt="Vehicle page"><div class="cap"><h3>Vehicle &amp; driving</h3><p>Seat assignment with a chauffeur seat, five driving styles, escort car and air support.</p></div></div>
+    <div class="shot"><img src="screenshots/05-settings.png" alt="Settings page"><div class="cap"><h3>Settings</h3><p>Admin tools (invincible, regen, reinforce, accuracy), minimap blips, panel position and size.</p></div></div>
+    <div class="shot wide"><img src="screenshots/06-agency.png" alt="Bodyguard Agency hiring screen"><div class="cap"><h3>Bodyguard Agency</h3><p>Four contract tiers with price, loadout, stats and outfit choice. Contracts persist until the guard is killed or dismissed.</p></div></div>
+    <div class="shot wide"><img src="screenshots/07-home-citizen.png" alt="Citizen view"><div class="cap"><h3>Citizen view</h3><p>The same panel for players: paid services with prices, Agency GPS, no admin tools.</p></div></div>
+  </div>
+
+  <h2>Features</h2>
+  <div class="feat">
+    <div class="f"><b>Agency &amp; contracts</b><p>NPC manager with blip. Tiers, prices, outfits and names are config. Contracts live in <code>nk_bodyguard_contracts</code> and come back after relog.</p></div>
+    <div class="f"><b>Roles</b><p>Admins (ESX group or <code>command.bodyguard</code> ace) recruit free and get every toggle; citizens pay for escort, air and medic.</p></div>
+    <div class="f"><b>Veterancy</b><p>Kills are saved on the contract. Veteran at 5 kills, Legend at 15, with accuracy and armour bonuses.</p></div>
+    <div class="f"><b>Mark &amp; attack / Move to</b><p>Aim in-game, press E. Peds are fought until dead, vehicles until wrecked. Squad-wide or per guard.</p></div>
+    <div class="f"><b>Natural movement</b><p>Guards walk, run and sprint into formation, chase your car and board when it stops. No teleports.</p></div>
+    <div class="f"><b>Integrations</b><p>Framework bridge (ESX), notification hook (native, esx, ox_lib, okok, mythic, custom), phone exports and events.</p></div>
+  </div>
+
+  <footer>nk_bodyguard · FXServer 35245 / build 3095 · ESX Legacy 1.15 · <a href="https://github.com/nikhilSolomon/nk_bodyguard" style="color:#9db4ff">github.com/nikhilSolomon/nk_bodyguard</a></footer>
+</div>
+</body>
+</html>
