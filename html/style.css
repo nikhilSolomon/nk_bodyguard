@@ -112,13 +112,13 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px;
 
 /* table */
 .tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
-.tbl th { text-align: left; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); padding: 10px 12px; border-bottom: 1px solid var(--line); font-weight: 600; }
-.tbl td { padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.tbl th { text-align: left; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); padding: 10px 9px; border-bottom: 1px solid var(--line); font-weight: 600; }
+.tbl td { padding: 8px 9px; border-bottom: 1px solid var(--line); vertical-align: middle; }
 .tbl tr { cursor: pointer; }
 .tbl tbody tr:hover { background: rgba(255,255,255,.03); }
 .tbl tr.sel { background: rgba(59,130,246,.12); }
 .tbl tr.dead { opacity: .5; }
-.bar { height: 6px; width: 80px; background: #0b0f15; border-radius: 3px; overflow: hidden; }
+.bar { height: 6px; width: 60px; background: #0b0f15; border-radius: 3px; overflow: hidden; }
 .bar > i { display: block; height: 100%; background: var(--accent2); }
 .bar.low > i { background: var(--danger); }
 .bar.ar > i { background: var(--accent); }
@@ -166,3 +166,50 @@ button.accent:hover { background: rgba(139,92,246,.28); }
 button:disabled { opacity: .45; cursor: default; }
 button:disabled:hover { background: var(--card2); border-color: var(--line); }
 #formGrid .dot.draft { stroke: #22c55e; stroke-width: 3; }
+
+/* ---------- roles: admin vs citizen ---------- */
+body.role-admin .citizen-only, body.role-citizen .admin-only { display: none !important; }
+.price { font-size: 11px; color: var(--warn); margin-left: 4px; font-weight: 600; }
+.kv-big { display: flex; justify-content: space-between; align-items: baseline; margin: 12px 0; font-size: 13px; color: var(--muted); }
+.kv-big b { font-size: 22px; color: var(--text); }
+
+/* tier / rank badges in the squad table */
+.badges { display: flex; gap: 4px; margin-top: 3px; }
+.tbadge, .rbadge { white-space: nowrap; font-size: 10px; letter-spacing: .4px; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+.tbadge { color: var(--c, var(--muted)); border-color: var(--c, var(--line)); }
+.rbadge.vet { color: #f59e0b; border-color: rgba(245,158,11,.5); }
+.rbadge.leg { color: #fde047; border-color: rgba(253,224,71,.6); background: rgba(253,224,71,.08); }
+
+/* ---------- Agency hiring screen ---------- */
+#shop {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: 940px; background: var(--bg); border: 1px solid var(--line); border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.65); display: flex; flex-direction: column; overflow: hidden;
+}
+#shop.hidden { display: none; }
+.shop-h { display: flex; justify-content: space-between; align-items: center; padding: 18px 22px; border-bottom: 1px solid var(--line);
+  background: linear-gradient(90deg, rgba(59,130,246,.14), rgba(139,92,246,.06) 60%, transparent); }
+.shop-h .brand { padding: 0; }
+.shop-h .brand-name { font-size: 18px; }
+.shop-body { padding: 18px 22px 20px; }
+.tiers { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.tier { background: var(--card); border: 1px solid var(--line); border-top: 3px solid var(--c); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+.tier-top { display: flex; justify-content: space-between; align-items: baseline; }
+.tier-name { font-weight: 700; font-size: 15px; color: var(--c); }
+.tier-price { font-size: 20px; font-weight: 700; }
+.tier-desc { font-size: 12px; color: var(--muted); min-height: 50px; line-height: 1.4; }
+.srow { display: grid; grid-template-columns: 58px 1fr 30px; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
+.srow span:last-child { text-align: right; color: var(--text); }
+.srow .bar { width: auto; }
+.srow .bar > i { background: var(--c); }
+.tier-weapon { font-size: 12px; margin-top: 2px; }
+.tier button.hire { text-align: center; font-weight: 600; background: rgba(34,197,94,.16); border-color: rgba(34,197,94,.5); color: var(--accent2); }
+.tier button.hire:hover { background: rgba(34,197,94,.28); }
+.tier button.hire:disabled { background: var(--card2); border-color: var(--line); color: var(--muted); }
+.shop-foot { display: flex; justify-content: space-between; gap: 18px; margin-top: 14px; font-size: 12px; color: var(--muted); line-height: 1.5; }
+.shop-foot b { color: var(--text); }
+.svc { white-space: nowrap; }
+.svc span { margin-left: 14px; }
+.svc span b { color: var(--warn); }
+button.armed { background: rgba(239,68,68,.25); border-color: var(--danger); color: #fff; }
+.tbl .x.xarmed { color: #fff; background: var(--danger); border-radius: 6px; font-size: 11px; padding: 2px 8px; }

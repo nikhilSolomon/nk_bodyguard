@@ -1,5 +1,8 @@
--- nk_bodyguard v3 : NPC bodyguards with a squad control panel
-local guards = {}            -- { ped, name, model, weapon, blip, modelHash, kills, hold }
+-- nk_bodyguard v5 : Bodyguard Agency contracts + squad control panel
+local guards = {}            -- { ped, name, model, weapon, blip, modelHash, kills, hold, contract, tier, rank, ... }
+local isAdmin = false        -- set by the server (ESX admin group / command.bodyguard ace)
+local shopOpen = false
+local respawnQueue = {}      -- contracted guards that vanished without dying: { at=, c= }
 local mode = 'follow'        -- follow | hold | aggressive | passive
 local formation = 0
 local driveStyle = Config.DefaultDriveStyle
@@ -10,7 +13,6 @@ local escort = nil           -- { veh, driver, blip, following, styleKey }
 local air = nil              -- { veh, pilot, blip }
 local GUARD_REL = joaat('NK_BODYGUARD')
 local PLAYER_REL = joaat('PLAYER')
-local nextName = 1
 local eventLog = {}
 local reinforceQueue = {}    -- timestamps when replacements are due
 local focus = nil            -- marked target being attacked: { ent=, kind='ped'|'veh', scope=, at= }
@@ -65,6 +67,32 @@ end
 
 local function pick(tbl) return tbl[math.random(#tbl)] end
 local function findById(tbl, id) for _, v in ipairs(tbl) do if v.id == id then return v end end return nil end
+local function tierById(id) for _, t in ipairs(Config.Tiers) do if t.id == id then return t end end return nil end
+
+local function money(n)
+    local s = tostring(math.floor(n or 0))
+    return '$' .. s:reverse():gsub('(%d%d%d)', '%1,'):reverse():gsub('^,', '')
+end
+
+-- request / reply with the server (must be called from a thread)
+local pending, reqSeq = {}, 0
+local function request(kind, ...)
+    reqSeq = reqSeq + 1
+    local id = reqSeq
+    local p = promise.new()
+    pending[id] = p
+    TriggerServerEvent('nk_bodyguard:' .. kind, id, ...)
+    SetTimeout(10000, function()
+        if pending[id] then pending[id] = nil; p:resolve({ false, 'The agency did not answer', {} }) end
+    end)
+    local r = Citizen.Await(p)
+    return r[1], r[2], r[3] or {}
+end
+
+RegisterNetEvent('nk_bodyguard:reply', function(id, ok, msg, extra)
+    local p = pending[id]
+    if p then pending[id] = nil; p:resolve({ ok, msg, extra }) end
+end)
 
 local function isSamePed(g)
     if not g or not DoesEntityExist(g.ped) then return false end
@@ -244,6 +272,55 @@ local function designatedDriver()
     return nil
 end
 
+-- New guards take the next free PASSENGER seat (front, rear L, rear R, ...). The driver seat
+-- is never auto-assigned: you drive unless you pick a chauffeur on the Vehicle page.
+local function assignDefaultSeat(g)
+    if seatOfGuard(g) then return end
+    for s = 0, 4 do
+        local k = tostring(s)
+        if not settings.seats[k] or settings.seats[k] == '' then settings.seats[k] = g.name; return end
+    end
+end
+
+local function clearSeat(g)
+    for k, n in pairs(settings.seats) do if n == g.name then settings.seats[k] = nil end end
+end
+
+-- names
+local function nameInUse(n)
+    for _, g in ipairs(guards) do if g.name == n then return true end end
+    return false
+end
+
+local function uniqueName(base)
+    if not nameInUse(base) then return base end
+    for i = 2, 9 do local n = ('%s %d'):format(base, i); if not nameInUse(n) then return n end end
+    return ('%s %d'):format(base, math.random(10, 99))
+end
+
+local function randomName()
+    local pool = {}
+    for _, n in ipairs(Config.Names) do if not nameInUse(n) then pool[#pool + 1] = n end end
+    if #pool == 0 then return uniqueName('Guard') end
+    return pool[math.random(#pool)]
+end
+
+-- veterancy
+local function rankOf(kills)
+    local r = Config.Ranks[1]
+    for _, x in ipairs(Config.Ranks) do if (kills or 0) >= x.kills then r = x end end
+    return r
+end
+
+local function applyRank(g)
+    local r = rankOf(g.kills)
+    g.rank = r.label
+    g.maxArmour = (g.baseArmour or Config.Armour) + (r.armour or 0)
+    if DoesEntityExist(g.ped) then
+        SetPedAccuracy(g.ped, math.min(100, (g.baseAccuracy or settings.accuracy) + (r.accuracy or 0)))
+    end
+end
+
 -- Formation slots are WORLD positions built from the direction I'm moving (not the way I'm
 -- looking), so guards don't orbit me when I turn my head. Each guard walks/runs/sprints to its
 -- slot with a navmesh task and simply stands when it's there and I'm not moving.
@@ -339,28 +416,49 @@ local function giveWeapon(g, w)
     g.weapon = w.label
 end
 
-local function spawnGuard()
+-- opts (all optional): model, modelLabel, weapon, weaponLabel, health, armour, accuracy, name,
+-- contract, kills, tierId, tierLabel, at (vector4). No opts = admin recruit from the panel pickers.
+local function spawnGuard(opts)
+    opts = opts or {}
     local me = PlayerPedId()
-    local m = findById(Config.Models, settings.recruitModel) or pick(Config.Models)
-    local w = findById(Config.Weapons, settings.recruitWeapon) or pick(Config.Weapons)
-    local model = joaat(m.model)
+    local modelName, modelLabel, w
+    if opts.model then
+        modelName, modelLabel = opts.model, opts.modelLabel or 'Guard'
+        w = { name = opts.weapon, label = opts.weaponLabel or opts.weapon:gsub('^WEAPON_', '') }
+    else
+        local m = findById(Config.Models, settings.recruitModel) or pick(Config.Models)
+        w = findById(Config.Weapons, settings.recruitWeapon) or pick(Config.Weapons)
+        modelName, modelLabel = m.model, m.label
+    end
+    local model = joaat(modelName)
     if not loadModel(model) then notify('~r~Bodyguard model failed to load'); return false end
 
-    local pos = GetOffsetFromEntityInWorldCoords(me, math.random(-2, 2) + 0.0, -2.0, 0.0)
-    local ped = CreatePed(4, model, pos.x, pos.y, pos.z, GetEntityHeading(me), true, true)
+    local pos, heading
+    if opts.at then
+        pos, heading = vector3(opts.at.x, opts.at.y, opts.at.z), opts.at.w or GetEntityHeading(me)
+        local ok, gz = GetGroundZFor_3dCoord(pos.x, pos.y, pos.z + 2.0, false)
+        if ok then pos = vector3(pos.x, pos.y, gz) end
+    else
+        pos, heading = GetOffsetFromEntityInWorldCoords(me, math.random(-2, 2) + 0.0, -2.0, 0.0), GetEntityHeading(me)
+    end
+    local ped = CreatePed(4, model, pos.x, pos.y, pos.z, heading, true, true)
     SetModelAsNoLongerNeeded(model)
     if not DoesEntityExist(ped) then return false end
+
+    local health = opts.health or Config.Health
+    local armour = opts.armour or Config.Armour
+    local accuracy = opts.accuracy or settings.accuracy
 
     SetEntityAsMissionEntity(ped, true, true)
     SetPedRelationshipGroupHash(ped, GUARD_REL)
     SetPedCanBeTargetted(ped, true)
-    SetPedMaxHealth(ped, Config.Health)
-    SetEntityHealth(ped, Config.Health)
-    SetPedArmour(ped, Config.Armour)
-    SetEntityInvincible(ped, settings.invincible)
+    SetPedMaxHealth(ped, health)
+    SetEntityHealth(ped, health)
+    SetPedArmour(ped, armour)
+    SetEntityInvincible(ped, isAdmin and settings.invincible or false)
     SetPedSuffersCriticalHits(ped, false)
     SetPedDiesWhenInjured(ped, false)
-    SetPedAccuracy(ped, settings.accuracy)
+    SetPedAccuracy(ped, accuracy)
     SetPedCombatAbility(ped, 2)
     SetPedCombatRange(ped, 2)
     SetPedCombatMovement(ped, 2)
@@ -377,37 +475,73 @@ local function spawnGuard()
     SetDriverAbility(ped, 1.0)
     SetDriverAggressiveness(ped, 0.0)
 
-    local g = { ped = ped, name = ('Guard %d'):format(nextName), model = m.label, weapon = w.label, blip = 0, modelHash = GetEntityModel(ped), kills = 0 }
+    local g = {
+        ped = ped, name = opts.name and uniqueName(opts.name) or randomName(),
+        model = modelLabel, weapon = w.label, blip = 0, modelHash = GetEntityModel(ped),
+        kills = opts.kills or 0, contract = opts.contract, tierId = opts.tierId, tier = opts.tierLabel or 'Admin',
+        modelName = modelName, weaponName = w.name,
+        maxHealth = health, baseArmour = armour, maxArmour = armour, baseAccuracy = accuracy,
+    }
     giveWeapon(g, w)
-    nextName = nextName + 1
     guards[#guards + 1] = g
+    applyRank(g)
+    assignDefaultSeat(g)
     ensureBlip(g)
     applyMode(g)
-    logEvent('', '%s recruited (%s, %s)', g.name, m.label, w.label)
-    return true
+    if g.contract then
+        logEvent('', '%s on duty (%s, %s)', g.name, g.tier, w.label)
+    else
+        logEvent('', '%s recruited (%s, %s)', g.name, modelLabel, w.label)
+    end
+    return g
 end
 
-local function adoptLeftovers()
-    local adopted, removed = 0, 0
+-- Guards left over from a previous start of this resource (still tagged with our relationship
+-- group) are removed; contracted guards are re-created from the database instead.
+local function cleanupLeftovers()
+    local removed = 0
     for _, p in ipairs(GetGamePool('CPed')) do
         local sameRel = (GetPedRelationshipGroupHash(p) - GUARD_REL) % 4294967296 == 0
-        if p ~= PlayerPedId() and sameRel and not isGuard(p) then
-            if #guards < Config.MaxGuards and not IsEntityDead(p) then
-                SetEntityAsMissionEntity(p, true, true)
-                local g = { ped = p, name = ('Guard %d'):format(nextName), model = 'Adopted', weapon = 'Rifle', blip = 0, modelHash = GetEntityModel(p), kills = 0 }
-                nextName = nextName + 1
-                guards[#guards + 1] = g
-                ensureBlip(g)
-                applyMode(g)
-                adopted = adopted + 1
-            else
-                SetEntityAsMissionEntity(p, true, true)
-                DeleteEntity(p)
-                removed = removed + 1
-            end
+        if p ~= PlayerPedId() and sameRel and not isGuard(p) and NetworkGetEntityOwner(p) == PlayerId() then
+            SetEntityAsMissionEntity(p, true, true)
+            DeleteEntity(p)
+            removed = removed + 1
         end
     end
-    if adopted > 0 then logEvent('hot', 'Re-attached %d guard(s) from before the restart', adopted) end
+    if removed > 0 then dbg('removed %d leftover guard ped(s)', removed) end
+end
+
+---------------------------------------------------------------------------
+-- contracts (Agency hires persisted on the server)
+---------------------------------------------------------------------------
+local function contractGuard(id)
+    for _, g in ipairs(guards) do if g.contract == id then return g end end
+    return nil
+end
+
+local function spawnContract(c, at)
+    if contractGuard(c.id) then return contractGuard(c.id) end
+    local t = tierById(c.tier) or Config.Tiers[1]
+    if not at then
+        local me = PlayerPedId()
+        local p = GetOffsetFromEntityInWorldCoords(me, math.random(-3, 3) + 0.0, -5.0 - math.random() * 3.0, 0.0)
+        at = vector4(p.x, p.y, p.z, GetEntityHeading(me))
+    end
+    return spawnGuard({
+        model = c.model, modelLabel = t.label, weapon = c.weapon, weaponLabel = t.weaponLabel,
+        health = t.health, armour = t.armour, accuracy = t.accuracy,
+        name = c.name, contract = c.id, kills = c.kills or 0, tierId = t.id, tierLabel = t.label, at = at,
+    })
+end
+
+local function contractCount()
+    local n = 0
+    for _, g in ipairs(guards) do if g.contract then n = n + 1 end end
+    return n
+end
+
+local function endContract(g, reason)
+    if g.contract then TriggerServerEvent('nk_bodyguard:contractEnd', g.contract, reason) end
 end
 
 local stopEscort, stopAir -- forward
@@ -422,8 +556,11 @@ local function hardDelete(ped)
     if DoesEntityExist(ped) then SetEntityAsNoLongerNeeded(ped) end
 end
 
-local function removeGuard(g, why)
+-- endIt = true: the contract is terminated (dismissed). false: only the ped is removed
+-- (resource restart, logout) and the contract comes back next time.
+local function removeGuard(g, why, endIt)
     dbg('removing %s (ped %d): %s', g.name, g.ped, why or 'dismissed')
+    if endIt then endContract(g, 'dismissed'); clearSeat(g) end
     if g.blip ~= 0 and DoesBlipExist(g.blip) then RemoveBlip(g.blip) end
     if isSamePed(g) then hardDelete(g.ped) elseif DoesEntityExist(g.ped) then RemovePedFromGroup(g.ped) end
     if chauffeur and chauffeur.guard == g.ped then chauffeur = nil end
@@ -431,12 +568,13 @@ local function removeGuard(g, why)
     if air and air.pilot == g.ped then stopAir(true) end
 end
 
-local function dismissAll(why)
+local function dismissAll(why, endIt)
     stopEscort(true); stopAir(true)
-    for _, g in ipairs(guards) do removeGuard(g, why) end
+    for _, g in ipairs(guards) do removeGuard(g, why, endIt) end
     guards = {}
     reinforceQueue = {}
-    logEvent('bad', 'Squad dismissed (%s)', why or '')
+    respawnQueue = {}
+    if endIt then logEvent('bad', 'Squad dismissed, contracts terminated') end
 end
 
 ---------------------------------------------------------------------------
@@ -548,13 +686,31 @@ end
 
 local function healGuard(g)
     SetEntityHealth(g.ped, GetEntityMaxHealth(g.ped))
-    SetPedArmour(g.ped, Config.Armour)
+    SetPedArmour(g.ped, g.maxArmour or Config.Armour)
     ClearPedBloodDamage(g.ped)
+end
+
+local function injured(g)
+    return GetEntityHealth(g.ped) < GetEntityMaxHealth(g.ped) or GetPedArmour(g.ped) < (g.maxArmour or Config.Armour)
 end
 
 local function orderHeal()
     eachAlive(healGuard)
     logEvent('', 'Squad healed')
+end
+
+-- Citizens pay for services; admins get them free. fn runs only after a successful payment.
+local function withPayment(service, qty, fn)
+    if isAdmin then fn(); return end
+    CreateThread(function()
+        local ok, msg = request('pay', service, qty)
+        if ok then
+            if msg ~= '' then notify('~g~' .. msg) end
+            fn()
+        else
+            notify('~r~' .. msg)
+        end
+    end)
 end
 
 ---------------------------------------------------------------------------
@@ -759,7 +915,9 @@ CreateThread(function()
 end)
 
 local function sendHome(g, idx)
-    logEvent('', '%s sent home', g.name)
+    logEvent('', '%s sent home%s', g.name, g.contract and ', contract ended' or '')
+    endContract(g, 'dismissed')
+    clearSeat(g)
     if g.blip ~= 0 and DoesBlipExist(g.blip) then RemoveBlip(g.blip) end
     if DoesEntityExist(g.ped) then
         SetPedRelationshipGroupHash(g.ped, joaat('CIVMALE'))   -- no longer ours; adopt won't pick it up
@@ -770,7 +928,6 @@ local function sendHome(g, idx)
         SetPedAsNoLongerNeeded(g.ped)
     end
     if chauffeur and chauffeur.guard == g.ped then chauffeur = nil end
-    for k, n in pairs(settings.seats) do if n == g.name then settings.seats[k] = nil end end
     table.remove(guards, idx)
 end
 
@@ -887,29 +1044,33 @@ end
 ---------------------------------------------------------------------------
 -- escort car
 ---------------------------------------------------------------------------
+-- Runs every 200 ms (own thread). Reacts immediately when I get in or out of a vehicle, re-kicks
+-- a stalled follow at once, and switches to a catch-up pace when the escort has fallen behind.
+-- The escort car is never teleported.
 local function escortTask()
     if not escort or not DoesEntityExist(escort.veh) or not DoesEntityExist(escort.driver) then return end
     local me = PlayerPedId()
     local target = myVehicle()
     if target == 0 then target = me end
     local s = style()
-    -- on foot: the follow task tends to stall once the car has stopped near me; re-kick it
-    -- whenever I've walked away and the car is sitting still
     local now = GetGameTimer()
+    local d = #(GetEntityCoords(escort.veh) - GetEntityCoords(me))
+    local far = d > 60.0
     local stalled = false
-    if target == me and escort.following == me and (escort.kickAt or 0) + 3000 < now then
-        local d = #(GetEntityCoords(escort.veh) - GetEntityCoords(me))
-        if d > Config.EscortDistance + 6.0 and GetEntitySpeed(escort.veh) < 0.8 then stalled = true; escort.kickAt = now end
+    if (escort.kickAt or 0) + 1000 < now and GetEntitySpeed(escort.veh) < 0.8 and d > Config.EscortDistance + 4.0 then
+        stalled = true; escort.kickAt = now
     end
-    if target ~= escort.following or escort.styleKey ~= driveStyle or stalled then
-        escort.following = target
-        escort.styleKey = driveStyle
+    if target ~= escort.following or escort.styleKey ~= driveStyle or stalled or far ~= escort.far then
+        escort.following, escort.styleKey, escort.far = target, driveStyle, far
         applyDriveTuning(escort.driver, escort.veh)
         if target == me then
-            TaskVehicleFollow(escort.driver, escort.veh, me, math.min(s.speed, 18.0), s.style, math.max(5.0, Config.EscortDistance * 0.6))
+            -- on foot: crawl along at walking-escort pace, or hurry if it's far behind
+            local spd = far and math.max(s.speed, 30.0) or math.min(s.speed, 18.0)
+            TaskVehicleFollow(escort.driver, escort.veh, me, spd, s.style, math.max(5.0, Config.EscortDistance * 0.6))
         else
+            local spd = far and math.max(s.speed, 45.0) or s.speed
             local gap = (s.aggro or 0) >= 0.7 and Config.EscortDistance * 0.6 or Config.EscortDistance
-            TaskVehicleEscort(escort.driver, escort.veh, target, -1, s.speed, s.style, gap, 0, 20.0)
+            TaskVehicleEscort(escort.driver, escort.veh, target, -1, spd, s.style, gap, 0, 20.0)
         end
     end
 end
@@ -924,11 +1085,17 @@ local function spareGuards()
     return free
 end
 
+local function canStartEscort()
+    if escort then return false, 'Escort already active' end
+    if #spareGuards() == 0 then return false, 'All guards are busy or riding with you' end
+    return true
+end
+
 local function startEscort()
-    if escort then notify('Escort already active'); return end
+    local okStart, why = canStartEscort()
+    if not okStart then notify('~y~' .. why); return end
     local me = PlayerPedId()
     local free = spareGuards()
-    if #free == 0 then notify('~y~All guards are busy or riding with you'); return end
     local v = findById(Config.EscortVehicles, settings.escortVehicle) or Config.EscortVehicles[1]
     local model = joaat(v.model)
     if not loadModel(model) then notify('~r~Escort vehicle model failed to load'); return end
@@ -988,11 +1155,17 @@ local function airTask()
     TaskHeliMission(air.pilot, air.veh, 0, me, 0.0, 0.0, 0.0, 7, Config.AirSpeed, 25.0, -1.0, math.floor(Config.AirHeight), math.floor(Config.AirHeight * 0.6), -1.0, 0)
 end
 
+local function canStartAir()
+    if air then return false, 'Air support already active' end
+    if #spareGuards() == 0 then return false, 'All guards are busy or riding with you' end
+    return true
+end
+
 local function startAir()
-    if air then notify('Air support already active'); return end
+    local okStart, why = canStartAir()
+    if not okStart then notify('~y~' .. why); return end
     local me = PlayerPedId()
     local free = spareGuards()
-    if #free == 0 then notify('~y~All guards are busy or riding with you'); return end
     local model = joaat(Config.AirVehicle)
     if not loadModel(model) then notify('~r~Helicopter model failed to load'); return end
     local base = GetEntityCoords(me)
@@ -1091,8 +1264,15 @@ AddEventHandler('gameEventTriggered', function(name, args)
     if (fatal == 1 or fatal == true) and DoesEntityExist(victim) and IsEntityDead(victim) then
         local g = guardByPed(attacker)
         if g and victim ~= me and not isGuard(victim) and GetEntityType(victim) == 1 then
+            local before = rankOf(g.kills).label
             g.kills = (g.kills or 0) + 1
+            applyRank(g)
+            if g.contract then TriggerServerEvent('nk_bodyguard:kill', g.contract) end
             logEvent('hot', '%s scored a kill (%d)', g.name, g.kills)
+            if g.rank ~= before then
+                logEvent('hot', '%s promoted to %s', g.name, g.rank)
+                notify(('~b~%s~s~ promoted to ~y~%s'):format(g.name, g.rank))
+            end
         end
     end
     if mode == 'passive' then return end
@@ -1166,10 +1346,12 @@ local function pushUpdate()
         local exists = DoesEntityExist(g.ped)
         data[#data + 1] = {
             index = i, name = g.name, model = g.model, weapon = g.weapon, kills = g.kills or 0,
+            tier = g.tier, rank = g.rank, contract = g.contract ~= nil,
+            tierColor = (tierById(g.tierId) or {}).color,
             health = exists and math.max(0, GetEntityHealth(g.ped) - 100) or 0,
-            maxHealth = math.max(1, Config.Health - 100),
+            maxHealth = math.max(1, (g.maxHealth or Config.Health) - 100),
             armour = exists and GetPedArmour(g.ped) or 0,
-            maxArmour = math.max(1, Config.Armour),
+            maxArmour = math.max(1, g.maxArmour or Config.Armour),
             distance = exists and math.floor(#(GetEntityCoords(g.ped) - me)) or 0,
             state = guardState(g), dead = not alive(g),
         }
@@ -1183,6 +1365,11 @@ local function pushUpdate()
         driveStyle = driveStyle, autoDriveBy = autoDriveBy, escort = escort ~= nil, air = air ~= nil,
         driveStatus = driveStatusText(), styleInfo = styleInfoText(), log = eventLog,
         settings = uiSettings(), options = { models = models, weapons = weapons, escortVehicles = evs },
+        admin = isAdmin,
+        agency = {
+            name = Config.Agency.Name, active = contractCount(), max = Config.Agency.MaxContracts,
+            prices = { escort = Config.Services.escort, air = Config.Services.air, heal = Config.Services.healPerGuard },
+        },
     })
 end
 
@@ -1202,11 +1389,17 @@ end
 RegisterNUICallback('action', function(data, cb)
     local a = data.action
     if a == 'close' then closePanel()
+    elseif (a == 'spawn' or a == 'spawnfill') and not isAdmin then
+        notify('~y~Hire guards in person at the ' .. Config.Agency.Name)
     elseif a == 'spawn' then
         if #guards >= Config.MaxGuards then notify(('~y~Limit reached (%d)'):format(Config.MaxGuards)) else spawnGuard() end
     elseif a == 'spawnfill' then
         while #guards < Config.MaxGuards do if not spawnGuard() then break end; Wait(80) end
-    elseif a == 'dismissall' then dismissAll('panel')
+    elseif a == 'dismissall' then dismissAll('panel', true)
+    elseif a == 'agencygps' then
+        local p = Config.Agency.Ped.coords
+        SetNewWaypoint(p.x, p.y)
+        notify('GPS set to the ' .. Config.Agency.Name)
     elseif a == 'attack' then closePanel(); orderAttack(aimedTarget(), true)
     elseif a == 'markattack' then closePanel(); startMarking('attack', nil)
     elseif a == 'markmove' then closePanel(); startMarking('move', nil)
@@ -1218,12 +1411,31 @@ RegisterNUICallback('action', function(data, cb)
     elseif a == 'cruise' then closePanel(); startChauffeur('cruise')
     elseif a == 'swapdriver' then if chauffeur then startChauffeur('keep') else notify('~y~Nobody is driving') end
     elseif a == 'stopdrive' then stopChauffeur(false)
-    elseif a == 'escort' then if escort then stopEscort(false) else startEscort() end
-    elseif a == 'air' then if air then stopAir(false) else startAir() end
+    elseif a == 'escort' then
+        if escort then stopEscort(false)
+        else
+            local okStart, why = canStartEscort()
+            if okStart then withPayment('escort', 1, startEscort) else notify('~y~' .. why) end
+        end
+    elseif a == 'air' then
+        if air then stopAir(false)
+        else
+            local okStart, why = canStartAir()
+            if okStart then withPayment('air', 1, startAir) else notify('~y~' .. why) end
+        end
     elseif a == 'enter' then orderEnter()
     elseif a == 'exit' then orderExit()
     elseif a == 'warp' then orderWarp()
-    elseif a == 'heal' then orderHeal()
+    elseif a == 'heal' then
+        local hurt = {}
+        eachAlive(function(g) if injured(g) then hurt[#hurt + 1] = g end end)
+        if #hurt == 0 then notify('Nobody needs a medic')
+        else
+            withPayment('healPerGuard', #hurt, function()
+                for _, g in ipairs(hurt) do if alive(g) then healGuard(g) end end
+                logEvent('', 'Medic patched up %d guard(s)', #hurt)
+            end)
+        end
     elseif a == 'formreset' then
         -- seed custom slots from the current preset so the editor starts from a sensible shape
         local base = formation == 4 and 0 or formation
@@ -1243,11 +1455,16 @@ RegisterNUICallback('guard', function(data, cb)
     local g = guards[data.index]
     if g and alive(g) then
         local a = data.action
-        if a == 'heal' then healGuard(g); logEvent('', '%s healed', g.name)
+        if a == 'heal' then
+            if not injured(g) then notify(('%s is not hurt'):format(g.name))
+            else withPayment('healPerGuard', 1, function() if alive(g) then healGuard(g); logEvent('', '%s healed', g.name) end end) end
         elseif a == 'warp' then warpGuard(g, data.index); logEvent('', '%s coming to you', g.name)
         elseif a == 'weapon' then
-            local w = findById(Config.Weapons, settings.recruitWeapon) or pick(Config.Weapons)
-            giveWeapon(g, w); logEvent('', '%s re-armed with %s', g.name, w.label)
+            if not isAdmin then notify('~y~Contract guards keep the weapon of their tier')
+            else
+                local w = findById(Config.Weapons, settings.recruitWeapon) or pick(Config.Weapons)
+                giveWeapon(g, w); g.weaponName = w.name; logEvent('', '%s re-armed with %s', g.name, w.label)
+            end
         elseif a == 'driver' then closePanel(); startChauffeur(chauffeur and 'keep' or 'cruise', g)
         elseif a == 'hold' then g.hold = true; g.holdPos = nil; applyMode(g); logEvent('', '%s holding position', g.name)
         elseif a == 'follow' then g.hold = nil; g.holdPos = nil; g.lastTarget = nil; applyMode(g); logEvent('', '%s following', g.name)
@@ -1263,7 +1480,9 @@ RegisterNUICallback('guard', function(data, cb)
             ClearPedTasks(g.ped)
             logEvent('', '%s: actions cancelled', g.name)
         elseif a == 'sendhome' then sendHome(g, data.index)
-        elseif a == 'dismiss' then removeGuard(g, 'panel'); table.remove(guards, data.index); logEvent('', '%s dismissed', g.name)
+        elseif a == 'dismiss' then
+            removeGuard(g, 'panel', true); table.remove(guards, data.index)
+            logEvent('', '%s dismissed%s', g.name, g.contract and ', contract ended' or '')
         end
     end
     pushUpdate(); cb('ok')
@@ -1291,6 +1510,10 @@ end)
 
 RegisterNUICallback('toggle', function(data, cb)
     local v = data.value and true or false
+    if not isAdmin and (data.name == 'invincible' or data.name == 'regen' or data.name == 'reinforce') then
+        notify('~y~That setting is admin only')
+        pushUpdate(); cb('ok'); return
+    end
     if data.name == 'autodriveby' then autoDriveBy = v; logEvent('', 'Auto drive-by %s', v and 'ON' or 'OFF')
     elseif data.name == 'invincible' then
         settings.invincible = v
@@ -1336,9 +1559,10 @@ RegisterNUICallback('setting', function(data, cb)
     if n == 'recruitModel' or n == 'recruitWeapon' or n == 'escortVehicle' or n == 'pos' then settings[n] = v
     elseif n == 'scale' then settings.scale = tonumber(v) or 1
     elseif n == 'spacing' then settings.spacing = math.max(1.0, math.min(5.0, tonumber(v) or 1.8)); for _, g in ipairs(guards) do g.followKey = nil end
-    elseif n == 'accuracy' then
+    elseif n == 'accuracy' and isAdmin then
         settings.accuracy = math.max(10, math.min(100, math.floor(tonumber(v) or 85)))
-        eachAlive(function(g) SetPedAccuracy(g.ped, settings.accuracy) end)
+        -- the slider tunes admin recruits; contract guards keep their tier's accuracy
+        eachAlive(function(g) if not g.contract then g.baseAccuracy = settings.accuracy; applyRank(g) end end)
     end
     pushUpdate(); cb('ok')
 end)
@@ -1350,12 +1574,129 @@ RegisterCommand('+bg_attack', function() if #guards > 0 then orderAttack(aimedTa
 RegisterCommand('-bg_attack', function() end, false)
 RegisterKeyMapping('+bg_attack', 'Bodyguards: attack my target', 'keyboard', Config.AttackKey)
 
+---------------------------------------------------------------------------
+-- Bodyguard Agency: blip, manager NPC, hiring screen
+---------------------------------------------------------------------------
+local agencyPed = 0
+local hiring = false
+
+local function shopData(extra)
+    extra = extra or {}
+    local tiers = {}
+    for _, t in ipairs(Config.Tiers) do
+        local outfits = {}
+        for _, o in ipairs(t.outfits) do outfits[#outfits + 1] = o.label end
+        tiers[#tiers + 1] = {
+            id = t.id, label = t.label, color = t.color, price = t.price, desc = t.desc, weapon = t.weaponLabel,
+            health = t.health, armour = t.armour, accuracy = t.accuracy, outfits = outfits,
+        }
+    end
+    return {
+        name = Config.Agency.Name, admin = isAdmin, balance = extra.balance or 0,
+        active = extra.active or contractCount(),
+        max = isAdmin and Config.MaxGuards or Config.Agency.MaxContracts,
+        squad = #guards, squadMax = Config.MaxGuards,
+        tiers = tiers,
+        services = { escort = Config.Services.escort, air = Config.Services.air, heal = Config.Services.healPerGuard },
+    }
+end
+
+local function closeShop()
+    shopOpen = false
+    SetNuiFocus(false, false)
+    SendNUIMessage({ type = 'shop', open = false })
+end
+
+local function openShop()
+    if panelOpen then closePanel() end
+    shopOpen = true
+    SetNuiFocus(true, true)
+    SendNUIMessage({ type = 'shop', open = true, data = shopData() })
+    CreateThread(function()
+        local ok, _, extra = request('balance')
+        if ok then
+            if extra.admin ~= nil then isAdmin = extra.admin end
+            if shopOpen then SendNUIMessage({ type = 'shop', open = true, data = shopData(extra) }) end
+        end
+    end)
+end
+
+RegisterNUICallback('shopclose', function(_, cb) closeShop(); cb('ok') end)
+
+RegisterNUICallback('hire', function(data, cb)
+    cb('ok')
+    if hiring then return end
+    if #guards >= Config.MaxGuards then
+        notify(('~y~You can only lead %d guards at once'):format(Config.MaxGuards)); return
+    end
+    hiring = true
+    CreateThread(function()
+        local ok, msg, extra = request('hire', data.tier, tonumber(data.outfit) or 1)
+        if ok and extra.contract then
+            spawnContract(extra.contract, Config.Agency.SpawnPoint)
+            notify('~g~' .. msg .. '~s~. They are on their way to you.')
+            logEvent('hot', '%s', msg)
+        else
+            notify('~r~' .. msg)
+        end
+        if shopOpen then SendNUIMessage({ type = 'shop', open = true, data = shopData(extra) }) end
+        hiring = false
+    end)
+end)
+
+local function spawnManager()
+    local p = Config.Agency.Ped
+    local hash = joaat(p.model)
+    if not loadModel(hash) then return end
+    local c = p.coords
+    local z = c.z
+    local ok, gz = GetGroundZFor_3dCoord(c.x, c.y, c.z + 2.0, false)
+    if ok then z = gz end
+    agencyPed = CreatePed(4, hash, c.x, c.y, z, c.w, false, false)     -- local only, not networked
+    SetModelAsNoLongerNeeded(hash)
+    SetEntityInvincible(agencyPed, true)
+    FreezeEntityPosition(agencyPed, true)
+    SetBlockingOfNonTemporaryEvents(agencyPed, true)
+    SetPedCanRagdoll(agencyPed, false)
+    SetPedFleeAttributes(agencyPed, 0, false)
+    if p.scenario then TaskStartScenarioInPlace(agencyPed, p.scenario, 0, true) end
+end
+
+CreateThread(function()
+    if not Config.Agency.Enabled then return end
+    local c = Config.Agency.Ped.coords
+    local blip = AddBlipForCoord(c.x, c.y, c.z)
+    SetBlipSprite(blip, Config.Agency.Blip.sprite)
+    SetBlipColour(blip, Config.Agency.Blip.colour)
+    SetBlipScale(blip, Config.Agency.Blip.scale)
+    SetBlipAsShortRange(blip, true)
+    BeginTextCommandSetBlipName('STRING'); AddTextComponentSubstringPlayerName(Config.Agency.Name); EndTextCommandSetBlipName(blip)
+
+    local here = vector3(c.x, c.y, c.z)
+    while true do
+        local wait = 1000
+        local d = #(GetEntityCoords(PlayerPedId()) - here)
+        if d < 80.0 and not DoesEntityExist(agencyPed) then spawnManager()
+        elseif d > 110.0 and DoesEntityExist(agencyPed) then DeleteEntity(agencyPed); agencyPed = 0 end
+        if d < 12.0 then
+            wait = 0
+            if d < Config.Agency.InteractDistance and not shopOpen and not panelOpen and not IsPedInAnyVehicle(PlayerPedId(), false) then
+                BeginTextCommandDisplayHelp('STRING')
+                AddTextComponentSubstringPlayerName('Press ~INPUT_CONTEXT~ to hire bodyguards')
+                EndTextCommandDisplayHelp(0, false, false, -1)
+                if IsControlJustReleased(0, 38) then openShop() end
+            end
+        end
+        Wait(wait)
+    end
+end)
+
 CreateThread(function()
     while true do
-        if panelOpen then
+        if panelOpen or shopOpen then
             if IsDisabledControlJustReleased(0, 200) or IsDisabledControlJustReleased(0, 202)
                 or IsDisabledControlJustReleased(0, 177) or IsDisabledControlJustReleased(0, 56) then
-                closePanel()
+                if shopOpen then closeShop() else closePanel() end
             end
             Wait(0)
         else
@@ -1380,6 +1721,76 @@ local function purgeGroup(group)
     if kicked > 0 then dbg('purged %d member(s) from group %d', kicked, group) end
 end
 
+---------------------------------------------------------------------------
+-- movement thread (250 ms): following on foot, boarding my car, getting out after me.
+-- Fast enough that guards react the moment I start walking, get in or get out.
+---------------------------------------------------------------------------
+CreateThread(function()
+    while true do
+        Wait(250)
+        if #guards > 0 then
+            updateMoveHeading()
+            local myVeh = myVehicle()
+            local now = GetGameTimer()
+            local slot = 0
+            for _, g in ipairs(guards) do
+                if alive(g) then
+                    slot = slot + 1
+                    local special = isDriverPed(g.ped) or inEscortVehicle(g.ped) or inAirVehicle(g.ped)
+                    local guardInVeh = IsPedInAnyVehicle(g.ped, false)
+                    local following = not g.hold and (mode == 'follow' or mode == 'aggressive' or mode == 'passive')
+                    if following and not special then
+                        if myVeh == 0 and not guardInVeh then
+                            g.sitAt = nil
+                            if not focusing(g) then
+                                local fighting = mode ~= 'passive' and inCombat(g.ped)
+                                if not fighting then follow(g, slot) else g.lastTarget = nil; g.goActive = false end
+                            end
+                        elseif myVeh ~= 0 and not guardInVeh then
+                            -- Natural boarding: never teleported into a seat. Chase the car while
+                            -- it moves, get in (assigned seat first) the moment it stops.
+                            local moving = GetEntitySpeed(myVeh) > 3.0
+                            if moving or not AreAnyVehicleSeatsFree(myVeh) then
+                                if g.followKey ~= 'chase' then
+                                    g.followKey, g.lastTarget, g.goActive = 'chase', nil, false
+                                    TaskFollowToOffsetOfEntity(g.ped, myVeh, 0.0, -3.5, 0.0, 3.0, -1, 2.5, true)
+                                end
+                            elseif (g.enterAt or 0) + 4000 < now then
+                                g.enterAt, g.followKey, g.lastTarget, g.goActive = now, nil, nil, false
+                                local want = seatOfGuard(g)
+                                local seat = -2
+                                if want and want >= 0 and IsVehicleSeatFree(myVeh, want) then seat = want end
+                                TaskEnterVehicle(g.ped, myVeh, 12000, seat, 2.0, 1, 0)
+                            end
+                        elseif myVeh == 0 and guardInVeh and not chauffeur then
+                            -- I got out: they get out right behind me
+                            g.sitAt = g.sitAt or now
+                            if now - g.sitAt > 350 then
+                                local v = GetVehiclePedIsIn(g.ped, false)
+                                if GetPedInVehicleSeat(v, -1) == g.ped and GetEntitySpeed(v) > 3.0 then
+                                    TaskVehicleTempAction(g.ped, v, 27, 1500)
+                                elseif (g.exitAt or 0) + 2500 < now then
+                                    g.exitAt, g.lastTarget, g.goActive = now, nil, false
+                                    TaskLeaveVehicle(g.ped, v, 256)
+                                end
+                            end
+                        else
+                            g.sitAt = nil
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- escort upkeep (200 ms): reacts immediately to me getting in / out / moving off
+CreateThread(function()
+    while true do
+        if escort then Wait(200); escortTask() else Wait(500) end
+    end
+end)
+
 CreateThread(function()
     local tick = 0
     while true do
@@ -1388,7 +1799,6 @@ CreateThread(function()
         local me = PlayerPedId()
         local myPos = GetEntityCoords(me)
         local now = GetGameTimer()
-        updateMoveHeading()
 
         if #guards > 0 then
             local keep = {}
@@ -1400,13 +1810,8 @@ CreateThread(function()
                     keep[#keep + 1] = g
                     local special = isDriverPed(g.ped) or inEscortVehicle(g.ped) or inAirVehicle(g.ped)
                     local guardInVeh = IsPedInAnyVehicle(g.ped, false)
-                    local dist = #(GetEntityCoords(g.ped) - myPos)
-                    local following = not g.hold and (mode == 'follow' or mode == 'aggressive' or mode == 'passive')
 
-                    if following and not special and not guardInVeh and myVeh == 0 and not focusing(g) then
-                        local fighting = mode ~= 'passive' and inCombat(g.ped)
-                        if not fighting then follow(g, #keep) else g.lastTarget = nil; g.goActive = false end
-                    end
+                    -- (following, boarding and dismounting run in the fast movement thread below)
 
                     -- guard sent to a position (Move to / per-guard Go to): walk there, then hold
                     if g.hold and g.holdPos and not special and not guardInVeh and not inCombat(g.ped) and not focusing(g) then
@@ -1417,42 +1822,6 @@ CreateThread(function()
                         elseif hd <= 2.5 and not g.holdArrived then
                             g.holdArrived = true
                             TaskStandGuard(g.ped, g.holdPos.x, g.holdPos.y, g.holdPos.z, GetEntityHeading(g.ped), 'WORLD_HUMAN_GUARD_STAND')
-                        end
-                    end
-
-                    if following and not special then
-                        if myVeh ~= 0 and not guardInVeh then
-                            -- Natural boarding: never teleported into a seat. Chase the car while it
-                            -- moves, get in when it stops. Only a guard lost far behind is moved onto
-                            -- the road behind the car (still on foot).
-                            local moving = GetEntitySpeed(myVeh) > 3.0
-                            local seatsFree = AreAnyVehicleSeatsFree(myVeh)
-                            if moving or not seatsFree then
-                                if g.followKey ~= 'chase' then
-                                    g.followKey = 'chase'
-                                    TaskFollowToOffsetOfEntity(g.ped, myVeh, 0.0, -3.5, 0.0, 3.0, -1, 2.5, true)
-                                end
-                            elseif (g.enterAt or 0) + 5000 < now then
-                                g.enterAt = now
-                                g.followKey = nil
-                                local want = seatOfGuard(g)
-                                local seat = -2
-                                if want and want >= 0 and IsVehicleSeatFree(myVeh, want) then seat = want end
-                                TaskEnterVehicle(g.ped, myVeh, 12000, seat, 2.0, 1, 0)
-                            end
-                        elseif myVeh == 0 and guardInVeh and not chauffeur then
-                            g.sitAt = g.sitAt or now
-                            if now - g.sitAt > 2000 then
-                                local v = GetVehiclePedIsIn(g.ped, false)
-                                if GetPedInVehicleSeat(v, -1) == g.ped and GetEntitySpeed(v) > 3.0 then
-                                    TaskVehicleTempAction(g.ped, v, 27, 1500)
-                                elseif (g.exitAt or 0) + 3000 < now then
-                                    g.exitAt = now
-                                    TaskLeaveVehicle(g.ped, v, 256)
-                                end
-                            end
-                        else
-                            g.sitAt = nil
                         end
                     end
 
@@ -1467,13 +1836,27 @@ CreateThread(function()
                     end
                 else
                     local why = dead and 'dead' or (DoesEntityExist(g.ped) and 'handle reused by another ped' or 'entity gone')
-                    logEvent('bad', '%s lost (%s)', g.name, why)
+                    if g.contract and dead then
+                        -- killed in action: the contract is over for good
+                        endContract(g, 'killed')
+                        clearSeat(g)
+                        logEvent('bad', '%s was killed in action. Contract ended.', g.name)
+                        notify(('~r~%s was killed in action.~s~ Contract ended.'):format(g.name))
+                    elseif g.contract then
+                        -- vanished without dying (despawned / handle taken): bring them back
+                        respawnQueue[#respawnQueue + 1] = { at = now + 2000, c = {
+                            id = g.contract, name = g.name, tier = g.tierId, model = g.modelName, weapon = g.weaponName, kills = g.kills } }
+                        logEvent('', '%s lost contact, rejoining', g.name)
+                    else
+                        logEvent('bad', '%s lost (%s)', g.name, why)
+                        clearSeat(g)
+                        if isAdmin and settings.reinforce then reinforceQueue[#reinforceQueue + 1] = now + Config.ReinforceDelay end
+                    end
                     if g.blip ~= 0 and DoesBlipExist(g.blip) then RemoveBlip(g.blip) end
                     if DoesEntityExist(g.ped) then RemovePedFromGroup(g.ped); if exists then SetPedAsNoLongerNeeded(g.ped) end end
                     if chauffeur and chauffeur.guard == g.ped then chauffeur = nil end
                     if escort and escort.driver == g.ped then stopEscort(true) end
                     if air and air.pilot == g.ped then stopAir(true) end
-                    if settings.reinforce then reinforceQueue[#reinforceQueue + 1] = now + Config.ReinforceDelay end
                 end
             end
             guards = keep
@@ -1517,14 +1900,6 @@ CreateThread(function()
             if escort then
                 if not DoesEntityExist(escort.veh) or IsEntityDead(escort.veh) or not DoesEntityExist(escort.driver) or IsEntityDead(escort.driver) then
                     stopEscort(true)
-                else
-                    escortTask()
-                    if #(GetEntityCoords(escort.veh) - myPos) > 250.0 then
-                        local p = GetOffsetFromEntityInWorldCoords(me, 0.0, -15.0, 0.0)
-                        SetEntityCoords(escort.veh, p.x, p.y, p.z, false, false, false, false)
-                        SetEntityHeading(escort.veh, GetEntityHeading(me))
-                        escort.following = 0
-                    end
                 end
             end
 
@@ -1533,9 +1908,6 @@ CreateThread(function()
                     stopAir(true)
                 elseif tick % 6 == 0 then
                     airTask()
-                    if #(GetEntityCoords(air.veh) - myPos) > 400.0 then
-                        SetEntityCoords(air.veh, myPos.x, myPos.y - 20.0, myPos.z + Config.AirHeight, false, false, false, false)
-                    end
                 end
             end
 
@@ -1555,8 +1927,17 @@ CreateThread(function()
             end
         end
 
-        -- reinforcements
-        if #reinforceQueue > 0 and settings.reinforce then
+        -- contracted guards that vanished without dying come back near you
+        if #respawnQueue > 0 then
+            local later = {}
+            for _, r in ipairs(respawnQueue) do
+                if r.at <= now then spawnContract(r.c) else later[#later + 1] = r end
+            end
+            respawnQueue = later
+        end
+
+        -- reinforcements (admin recruits only)
+        if #reinforceQueue > 0 and isAdmin and settings.reinforce then
             local due = {}
             for _, t in ipairs(reinforceQueue) do
                 if t <= now then
@@ -1578,7 +1959,7 @@ end)
 ---------------------------------------------------------------------------
 RegisterNetEvent('nk_bodyguard:client:command', function(args)
     local a = args[1] and args[1]:lower() or nil
-    if a == 'dismiss' or a == 'remove' or a == 'off' then dismissAll('command'); return end
+    if a == 'dismiss' or a == 'remove' or a == 'off' then dismissAll('command', true); return end
     if a == 'panel' or a == 'menu' or a == 'ui' then openPanel(); return end
     local n = tonumber(a) or 1
     local spawned = 0
@@ -1608,8 +1989,37 @@ AddEventHandler('onResourceStop', function(res)
     end
 end)
 
+---------------------------------------------------------------------------
+-- role + contracts from the server
+---------------------------------------------------------------------------
+local contractsSyncing = false
+RegisterNetEvent('nk_bodyguard:init', function(d)
+    isAdmin = d.admin and true or false
+    if not d.loaded or contractsSyncing then return end
+    contractsSyncing = true
+    CreateThread(function()
+        local n = 0
+        for _, c in ipairs(d.contracts or {}) do
+            if not contractGuard(c.id) and #guards < Config.MaxGuards then
+                if spawnContract(c) then n = n + 1 end
+                Wait(150)
+            end
+        end
+        if n > 0 then notify(('~b~%d bodyguard(s)~s~ reporting for duty'):format(n)) end
+        contractsSyncing = false
+    end)
+end)
+
+-- character logout / switch (multicharacter): remove the peds, keep the contracts
+RegisterNetEvent('esx:onPlayerLogout', function()
+    if panelOpen then closePanel() end
+    if shopOpen then closeShop() end
+    dismissAll('logout', false)
+end)
+
 CreateThread(function()
     Wait(1500)
-    adoptLeftovers()
+    cleanupLeftovers()
     purgeGroup(GetPlayerGroup(PlayerId()))
+    TriggerServerEvent('nk_bodyguard:hello')
 end)

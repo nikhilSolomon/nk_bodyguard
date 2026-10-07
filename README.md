@@ -1,34 +1,48 @@
 # nk_bodyguard
 
-NPC bodyguards for FiveM (ESX-friendly, standalone) with an in-game **Bodyguard Center** panel.
-
-![Bodyguard Center](https://img.shields.io/badge/FiveM-resource-blue) ![Lua](https://img.shields.io/badge/Lua-5.4-informational)
+NPC bodyguards for FiveM (ESX Legacy + oxmysql) with a **Bodyguard Agency** where players hire
+contracted guards, and an in-game **Bodyguard Center** panel to command them.
 
 ## Features
 
-- `/bodyguard [n]` recruits up to 6 armed guards (model + weapon pickers). Admin-only by default.
-- **F9** opens the Bodyguard Center (NUI, sidebar layout):
-  - **Home** – stats, mode (Follow / Hold / Aggressive / Hold fire), quick orders, recruit, event log.
-  - **Squad** – table of guards with per-guard orders: Attack, Follow, Go to, Mark in minimap, Send home, Cancel, Come to me, Hold, Heal, Re-arm, Make driver, Dismiss.
-  - **Formation** – Loose / Circle / Wedge / Line / Custom with a drag-and-drop editor (1 square = 1 m) and spacing slider; changes apply on **Apply**.
-  - **Vehicle** – seat assignment per guard incl. a **Driver** seat (that guard chauffeurs you to your waypoint), driving styles Calm → Insane, chauffeur / cruise / swap / stop, escort car, air-support helicopter, auto drive-by.
-  - **Settings** – invincible, health regen, auto-reinforce, blips, accuracy, panel position / size.
-- **Mark & attack** / **Move to position**: aim in-game, **E** confirms, **Esc** cancels. Marked peds are fought until dead, marked vehicles shot until destroyed.
-- **Caps Lock** – attack whatever you are aiming at.
-- Guards are never teleported: they walk / run / sprint into formation, chase your car and board when it stops.
-- Following, boarding and defending are script-driven (the game's ped-group is not used, it caps at two members).
+### Bodyguard Agency (citizens)
+- A blip and a manager NPC in Legion Square (next to the ESX default spawn). Walk up, press **E**.
+- Four contract tiers, each with its own price, weapon, health, armour, accuracy and outfit choice:
+  Rookie, Professional, Elite, Heavy Gunner. Paid from cash, then bank.
+- Each hire is a **contract** saved in the `nk_bodyguard_contracts` table. The guard rejoins you after a
+  relog or a server restart, and the contract ends for good when the guard is **killed** or **dismissed**. No refunds.
+- Paid services from the panel: escort car, air support helicopter, medic (per injured guard).
+- **Veterancy**: kills are saved on the contract. *Veteran* at 5 kills (+accuracy), *Legend* at 15 (+accuracy, +armour).
+- Named guards (Marcus, Viktor, Dmitri...).
+
+### Admins
+- ESX group `admin`/`superadmin` or the `command.bodyguard` ace.
+- Free, unlimited recruiting from the panel (temporary, not saved) and `/bodyguard [n|dismiss|panel]`.
+- Free hires at the Agency and free services. Admin-only toggles: invincible, health regen, auto-reinforce, accuracy.
+
+### Bodyguard Center (F9)
+- **Home**: stats, mode (Follow / Hold / Aggressive / Hold fire), quick orders, recruit or Agency info, event log.
+- **Squad**: table with tier and rank badges, per-guard orders: Attack, Follow, Go to, Mark in minimap, Send home,
+  Cancel, Come to me, Hold, Medic, Make driver, Dismiss. Ending a contract asks for a second click.
+- **Formation**: Loose / Circle / Wedge / Line / Custom with a drag-and-drop editor and an Apply button.
+- **Vehicle**: seat assignment. New guards take the next **passenger** seat automatically and the driver seat stays
+  yours unless you assign a chauffeur. Driving styles Calm to Insane, chauffeur / cruise / swap / stop, escort car,
+  air support, auto drive-by.
+- **Settings**: minimap blips, panel position and size, plus the admin tools.
+
+### Behaviour
+- **Mark & attack** / **Move to position**: aim in-game, **E** confirms, **Esc** cancels.
+- **Caps Lock** attacks whatever you are aiming at.
+- Guards are never teleported. Movement runs every 250 ms: they follow on foot, chase your car and board the moment
+  it stops, and get out right behind you. The escort car reacts within 200 ms and speeds up to catch up when behind.
 
 ## Install
 
-1. Drop the folder into `resources/` and add `ensure nk_bodyguard` to `server.cfg`.
-2. The command is restricted (`Config.AdminOnly = true`): grant `command.bodyguard` (admins with `add_ace group.admin command allow` already have it).
+1. Requires `es_extended` and `oxmysql`. Drop the folder into `resources/` and add `ensure nk_bodyguard` after them.
+2. The table is created automatically on start (or run `install.sql`).
 3. Keys can be rebound in *Settings › Key Bindings › FiveM*.
 
 ## Config
 
-See `config.lua`: models, weapons, health / armour / accuracy, driving styles (speed, flags, aggressiveness, top-speed boost), escort vehicles, air vehicle, defaults for the toggles.
-
-## Notes
-
-- Tested on FXServer 35245 / game build 3095 with ESX Legacy 1.15.
-- `Config.Debug = true` prints squad events to the F8 console.
+`config.lua`: Agency location / NPC / blip, contract limit, payment accounts, tiers, service prices, ranks, names,
+admin recruit models and weapons, driving styles, escort vehicles, air vehicle.

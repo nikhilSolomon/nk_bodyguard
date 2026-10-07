@@ -69,14 +69,14 @@
           <button data-action="ceasefire">✋ Cease fire</button>
           <button data-action="gotowp">🚩 Go to waypoint</button>
           <button data-action="attack" title="Attack what you're aiming at right now (also Caps Lock)">⚡ Attack aimed</button>
-          <button data-action="heal">➕ Heal all</button>
+          <button data-action="heal">➕ Medic <span class="price citizen-only" data-price="heal" data-suffix="/guard"></span></button>
           <button data-action="driveby">🔫 Drive-by target</button>
         </div>
       </div>
 
       <div class="two">
-        <div class="card">
-          <div class="card-h">Recruit</div>
+        <div class="card admin-only">
+          <div class="card-h">Recruit <span class="muted">admin · free, not saved</span></div>
           <div class="recruit">
             <select data-setting="recruitModel" id="recruitModel"></select>
             <select data-setting="recruitWeapon" id="recruitWeapon"></select>
@@ -85,6 +85,14 @@
             <button data-action="spawn" class="primary">＋ Recruit one</button>
             <button data-action="spawnfill" class="primary">Fill squad</button>
           </div>
+          <button data-action="agencygps" class="block" style="margin-top:8px">📍 GPS to the Agency</button>
+          <button data-action="dismissall" class="danger block" style="margin-top:8px">Dismiss all</button>
+        </div>
+        <div class="card citizen-only">
+          <div class="card-h"><span id="agencyName">Bodyguard Agency</span></div>
+          <div class="hint-inline" style="margin-top:0">Hire guards in person at the Agency in Legion Square. A contract lasts until the guard is <b>killed</b> or <b>dismissed</b>. No refunds.</div>
+          <div class="kv-big"><span>Active contracts</span><b id="agencyCount">0 / 4</b></div>
+          <button data-action="agencygps" class="primary block">📍 Set GPS to the Agency</button>
           <button data-action="dismissall" class="danger block" style="margin-top:8px">Dismiss all</button>
         </div>
         <div class="card">
@@ -98,10 +106,10 @@
     <section class="page" data-page="squad">
       <div class="card nopad">
         <table class="tbl">
-          <thead><tr><th>Name</th><th>Loadout</th><th>Health</th><th>Armour</th><th>Kills</th><th>State</th><th>Dist</th><th></th></tr></thead>
+          <thead><tr><th>Guard</th><th>Weapon</th><th>Health</th><th>Armour</th><th>Kills</th><th>State</th><th>Dist</th><th></th></tr></thead>
           <tbody id="rows"></tbody>
         </table>
-        <div id="rowsEmpty" class="empty">No guards. Recruit from Home.</div>
+        <div id="rowsEmpty" class="empty">No guards yet. Hire them at the Bodyguard Agency (Home › Set GPS).</div>
       </div>
       <div class="card" id="guardDetail" style="display:none">
         <div class="card-h">Individual orders · <span id="detName"></span></div>
@@ -114,8 +122,8 @@
           <button data-gaction="cancel">✖ Cancel actions</button>
           <button data-gaction="warp">🏃 Come to me</button>
           <button data-gaction="hold">⏸ Hold here</button>
-          <button data-gaction="heal">➕ Heal</button>
-          <button data-gaction="weapon">🔫 Re-arm</button>
+          <button data-gaction="heal">➕ Medic <span class="price citizen-only" data-price="heal"></span></button>
+          <button data-gaction="weapon" class="admin-only">🔫 Re-arm</button>
           <button data-gaction="driver">🚗 Make driver</button>
           <button data-gaction="dismiss" class="danger">Dismiss</button>
         </div>
@@ -193,10 +201,10 @@
           <div class="card-h" style="margin-top:14px">Escort &amp; air</div>
           <div class="recruit">
             <select data-setting="escortVehicle" id="escortVehicle"></select>
-            <button data-action="escort" id="escortBtn" class="toggle">🚙 Escort car</button>
+            <button data-action="escort" id="escortBtn" class="toggle">🚙 Escort car <span class="price citizen-only" data-price="escort"></span></button>
           </div>
           <div class="grid2" style="margin-top:8px">
-            <button data-action="air" id="airBtn" class="toggle">🚁 Air support</button>
+            <button data-action="air" id="airBtn" class="toggle">🚁 Air support <span class="price citizen-only" data-price="air"></span></button>
             <button data-action="driveby">🔫 Drive-by target</button>
           </div>
           <label class="switch"><input type="checkbox" data-toggle="autodriveby" id="autoDriveBy"><span class="track"><span class="knob"></span></span><span>Auto drive-by on hostiles</span></label>
@@ -210,15 +218,19 @@
       <div class="two wide">
         <div class="card">
           <div class="card-h">Squad</div>
-          <label class="switch"><input type="checkbox" data-toggle="invincible"><span class="track"><span class="knob"></span></span><span>Invincible guards</span></label>
-          <label class="switch"><input type="checkbox" data-toggle="regen"><span class="track"><span class="knob"></span></span><span>Health regeneration out of combat</span></label>
-          <label class="switch"><input type="checkbox" data-toggle="reinforce"><span class="track"><span class="knob"></span></span><span>Auto-reinforce fallen guards</span></label>
           <label class="switch"><input type="checkbox" data-toggle="blips"><span class="track"><span class="knob"></span></span><span>Show guards on minimap</span></label>
-          <div class="slider-row">
-            <span>Accuracy</span>
-            <input type="range" min="10" max="100" step="5" id="accuracy" data-setting="accuracy">
-            <span id="accuracyVal">85</span>
+          <div class="admin-only">
+            <label class="switch"><input type="checkbox" data-toggle="invincible"><span class="track"><span class="knob"></span></span><span>Invincible guards</span></label>
+            <label class="switch"><input type="checkbox" data-toggle="regen"><span class="track"><span class="knob"></span></span><span>Health regeneration out of combat</span></label>
+            <label class="switch"><input type="checkbox" data-toggle="reinforce"><span class="track"><span class="knob"></span></span><span>Auto-reinforce fallen guards</span></label>
+            <div class="slider-row">
+              <span>Accuracy</span>
+              <input type="range" min="10" max="100" step="5" id="accuracy" data-setting="accuracy">
+              <span id="accuracyVal">85</span>
+            </div>
+            <div class="hint-inline">Admin tools. Accuracy applies to admin recruits; contract guards use their tier.</div>
           </div>
+          <div class="hint-inline citizen-only">Guard toughness and accuracy come from the contract tier and grow with experience: <b>Veteran</b> at 5 kills, <b>Legend</b> at 15.</div>
         </div>
         <div class="card">
           <div class="card-h">Panel</div>
@@ -237,6 +249,31 @@
       </div>
     </section>
   </main>
+</div>
+
+<!-- ================= AGENCY HIRING SCREEN ================= -->
+<div id="shop" class="hidden">
+  <header class="shop-h">
+    <div class="brand">
+      <div class="logo">🛡</div>
+      <div>
+        <div class="brand-name" id="shopName">Bodyguard Agency</div>
+        <div class="sub">Licensed close protection · Legion Square</div>
+      </div>
+    </div>
+    <div class="hdr-right">
+      <span class="pill ok" id="shopBalance">$0</span>
+      <span class="pill" id="shopCount">0 / 4 contracts</span>
+      <button class="icon" data-shop="close" title="Close (Esc)">✕</button>
+    </div>
+  </header>
+  <div class="shop-body">
+    <div id="tiers" class="tiers"></div>
+    <div class="shop-foot">
+      <div><b>Contracts are permanent</b> until the guard is killed or you dismiss them. No refunds. Guards rejoin you after a relog.</div>
+      <div class="svc" id="shopServices"></div>
+    </div>
+  </div>
 </div>
 <script src="app.js"></script>
 </body>

@@ -3,9 +3,9 @@ game 'gta5'
 lua54 'yes'
 
 name 'nk_bodyguard'
-description 'NPC bodyguards with a squad control panel: follow, hold, aggressive, hold fire, drive-by, chauffeur'
+description 'NPC bodyguards: Bodyguard Agency contracts, squad control panel, formations, chauffeur, escort, air support'
 author 'Nikhil'
-version '2.0.0'
+version '5.0.0'
 
 ui_page 'html/index.html'
 
@@ -17,4 +17,12 @@ files {
 
 shared_script 'config.lua'
 client_script 'client.lua'
-server_script 'server.lua'
+server_scripts {
+    '@oxmysql/lib/MySQL.lua',
+    'server.lua',
+}
+
+dependencies {
+    'es_extended',
+    'oxmysql',
+}

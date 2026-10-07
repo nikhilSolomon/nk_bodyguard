@@ -24,6 +24,7 @@ function post(name, data) {
 }
 const setActive = (sel, attr, v) => document.querySelectorAll(sel).forEach(b => b.classList.toggle('active', b.dataset[attr] === String(v)));
 const fmtTime = (ms) => new Date(ms).toTimeString().slice(0, 8);
+const money = (n) => '$' + Math.floor(n || 0).toLocaleString('en-US');
 
 function fillSelect(sel, items, value, randomOpt) {
   const want = (randomOpt ? 1 : 0) + items.length;
@@ -148,6 +149,18 @@ function render(d) {
   pill.textContent = fighting ? `${fighting} fighting` : (alive.length ? 'Ready' : 'Idle');
   pill.className = 'pill ' + (fighting ? 'fight' : (alive.length ? 'ok' : ''));
 
+  // role: admins get the free recruit tools, citizens see the Agency + prices
+  document.body.classList.toggle('role-admin', !!d.admin);
+  document.body.classList.toggle('role-citizen', !d.admin);
+  if (d.agency) {
+    $('#agencyName').textContent = d.agency.name;
+    $('#agencyCount').textContent = `${d.agency.active} / ${d.agency.max}`;
+    document.querySelectorAll('[data-price]').forEach(s => {
+      const v = d.agency.prices[s.dataset.price];
+      s.textContent = v ? money(v) + (s.dataset.suffix || '') : '';
+    });
+  }
+
   setActive('button.mode', 'mode', d.mode);
   setActive('button.form', 'formation', d.formation);
   setActive('button.style', 'style', d.driveStyle);
@@ -179,16 +192,19 @@ function render(d) {
     const hp = Math.max(0, Math.min(100, Math.round(g.health / g.maxHealth * 100)));
     const ar = Math.max(0, Math.min(100, Math.round(g.armour / g.maxArmour * 100)));
     const cls = (g.state === 'Firing' || g.state === 'Fighting') ? 'hot' : ((g.state === 'Driving' || g.state === 'Escorting' || g.state === 'Flying') ? 'drv' : '');
+    const rk = g.rank === 'Legend' ? 'leg' : (g.rank === 'Veteran' ? 'vet' : '');
+    const xArmed = armedRow === g.index && Date.now() - armedRowAt < 3000;
     return `<tr data-guard="${g.index}" class="${selected === g.index ? 'sel' : ''} ${g.dead ? 'dead' : ''}">
-      <td><b>${g.name}</b></td><td class="state">${g.model} · ${g.weapon}</td>
+      <td><b>${g.name}</b><div class="badges"><span class="tbadge" style="--c:${g.tierColor || '#8b95a7'}">${g.tier || 'Admin'}</span><span class="rbadge ${rk}">${g.rank || 'Recruit'}</span></div></td>
+      <td class="state">${g.weapon}</td>
       <td><div class="bar ${hp < 35 ? 'low' : ''}"><i style="width:${hp}%"></i></div></td>
       <td><div class="bar ar"><i style="width:${ar}%"></i></div></td>
       <td>${g.kills || 0}</td><td class="state ${cls}">${g.state}</td><td class="state">${g.distance} m</td>
-      <td><button class="x" data-gaction="dismiss" data-index="${g.index}" title="Dismiss">✕</button></td></tr>`;
+      <td><button class="x ${xArmed ? 'xarmed' : ''}" data-gaction="dismiss" data-index="${g.index}" title="${g.contract ? 'Dismiss (ends the contract)' : 'Dismiss'}">${xArmed ? 'End?' : '✕'}</button></td></tr>`;
   }).join('');
   const sel = d.guards.find(g => g.index === selected);
   $('#guardDetail').style.display = sel ? 'block' : 'none';
-  if (sel) $('#detName').textContent = `${sel.name} · ${sel.model} · ${sel.weapon}`;
+  if (sel) $('#detName').textContent = `${sel.name} · ${sel.tier || 'Admin'} · ${sel.rank || 'Recruit'} · ${sel.weapon}`;
 
   // seats
   const names = d.guards.filter(g => !g.dead).map(g => g.name);
@@ -206,12 +222,62 @@ function render(d) {
   if (!drag) drawFormation(d);
 }
 
+// ---------- Agency hiring screen ----------
+const shop = $('#shop');
+const outfitSel = {};      // tier id -> chosen outfit (1-based), kept across re-renders
+
+function srow(label, v, max) {
+  return `<div class="srow"><span>${label}</span><div class="bar"><i style="width:${Math.round(v / Math.max(max, 1) * 100)}%"></i></div><span>${v}</span></div>`;
+}
+
+function renderShop(d) {
+  $('#shopName').textContent = d.name;
+  $('#shopBalance').textContent = d.admin ? 'Admin · free' : money(d.balance);
+  $('#shopCount').textContent = `${d.active} / ${d.max} contracts`;
+  const full = d.active >= d.max || d.squad >= d.squadMax;
+  const maxH = Math.max(...d.tiers.map(t => t.health));
+  const maxA = Math.max(...d.tiers.map(t => t.armour));
+  $('#tiers').innerHTML = d.tiers.map(t => {
+    const afford = d.admin || d.balance >= t.price;
+    const sel = outfitSel[t.id] || 1;
+    const opts = t.outfits.map((o, i) => `<option value="${i + 1}" ${i + 1 === sel ? 'selected' : ''}>${o}</option>`).join('');
+    const label = full ? 'Contract limit reached' : (afford ? `Hire · ${d.admin ? 'free' : money(t.price)}` : 'Not enough money');
+    return `<div class="tier" style="--c:${t.color}">
+      <div class="tier-top"><span class="tier-name">${t.label}</span><span class="tier-price">${money(t.price)}</span></div>
+      <div class="tier-desc">${t.desc}</div>
+      ${srow('Health', t.health, maxH)}${srow('Armour', t.armour, maxA)}${srow('Accuracy', t.accuracy, 100)}
+      <div class="tier-weapon">🔫 ${t.weapon}</div>
+      <select data-outfit="${t.id}">${opts}</select>
+      <button class="hire" data-hire="${t.id}" ${(!afford || full) ? 'disabled' : ''}>${label}</button>
+    </div>`;
+  }).join('');
+  $('#shopServices').innerHTML = `Services (F9 panel):<span>Escort car <b>${money(d.services.escort)}</b></span><span>Air support <b>${money(d.services.air)}</b></span><span>Medic <b>${money(d.services.heal)}</b>/guard</span>`;
+}
+
 window.addEventListener('message', (e) => {
   const msg = e.data || {};
   if (msg.type === 'open') panel.classList.remove('hidden');
   if (msg.type === 'close') panel.classList.add('hidden');
   if (msg.type === 'update') render(msg);
+  if (msg.type === 'shop') {
+    if (msg.open) { shop.classList.remove('hidden'); if (msg.data) renderShop(msg.data); }
+    else shop.classList.add('hidden');
+  }
 });
+
+// two-click confirm for buttons that end a paid contract
+let armedRow = null, armedRowAt = 0;
+const armedBtns = new Map();
+function armButton(b, label) {
+  if (armedBtns.has(b)) {
+    clearTimeout(armedBtns.get(b)); armedBtns.delete(b);
+    b.innerHTML = b.dataset.orig; b.classList.remove('armed');
+    return true;
+  }
+  b.dataset.orig = b.innerHTML; b.textContent = label; b.classList.add('armed');
+  armedBtns.set(b, setTimeout(() => { armedBtns.delete(b); b.innerHTML = b.dataset.orig; b.classList.remove('armed'); }, 3000));
+  return false;
+}
 
 function armDismiss(b) {
   if (dismissArmed) { clearTimeout(dismissArmed); dismissArmed = null; b.textContent = 'Dismiss all'; b.classList.remove('armed'); return true; }
@@ -222,6 +288,18 @@ function armDismiss(b) {
 
 document.addEventListener('click', (e) => {
   const b = e.target.closest('button');
+  // hiring screen open: it owns all clicks
+  if (!shop.classList.contains('hidden')) {
+    if (!b) { if (!e.target.closest('#shop')) post('shopclose'); return; }
+    if (e.detail === 0 && e.clientX === 0 && e.clientY === 0) { e.preventDefault(); return; }
+    b.blur();
+    if (b.dataset.shop === 'close') post('shopclose');
+    else if (b.dataset.hire) {
+      b.disabled = true; b.textContent = 'Signing contract...';
+      post('hire', { tier: b.dataset.hire, outfit: outfitSel[b.dataset.hire] || 1 });
+    }
+    return;
+  }
   if (!b) {
     const row = e.target.closest('tr[data-guard]');
     if (row) { const idx = Number(row.dataset.guard); selected = selected === idx ? null : idx; if (lastData) render(lastData); return; }
@@ -239,10 +317,18 @@ document.addEventListener('click', (e) => {
   }
   if (b.dataset.gaction) {
     const idx = b.dataset.index ? Number(b.dataset.index) : selected;
-    if (idx) {
-      post('guard', { action: b.dataset.gaction, index: idx });
-      if (b.dataset.gaction === 'dismiss' || b.dataset.gaction === 'sendhome') selected = null;
+    if (!idx) return;
+    const ga = b.dataset.gaction;
+    const g = lastData && lastData.guards.find(x => x.index === idx);
+    if ((ga === 'dismiss' || ga === 'sendhome') && g && g.contract) {
+      if (b.classList.contains('x')) {
+        // table ✕ is re-rendered every update, so its armed state lives in armedRow
+        if (!(armedRow === idx && Date.now() - armedRowAt < 3000)) { armedRow = idx; armedRowAt = Date.now(); render(lastData); return; }
+        armedRow = null;
+      } else if (!armButton(b, 'Click again: contract ends, no refund')) return;
     }
+    post('guard', { action: ga, index: idx });
+    if (ga === 'dismiss' || ga === 'sendhome') selected = null;
     return;
   }
   if (b.dataset.action === 'dismissall' && !armDismiss(b)) return;
@@ -256,6 +342,7 @@ document.addEventListener('click', (e) => {
 
 document.addEventListener('change', (e) => {
   const t = e.target; if (!t || !t.dataset) return;
+  if (t.dataset.outfit) { outfitSel[t.dataset.outfit] = Number(t.value) || 1; return; }
   if (t.dataset.toggle) post('toggle', { name: t.dataset.toggle, value: t.checked });
   else if (t.dataset.seatSel !== undefined) post('seat', { seat: Number(t.dataset.seatSel), guard: t.value });
   else if (t.dataset.setting) post('setting', { name: t.dataset.setting, value: t.type === 'range' ? Number(t.value) : t.value });
@@ -267,7 +354,11 @@ document.addEventListener('input', (e) => {
 });
 
 function onKey(e) {
-  if (e.key === 'Escape' || e.key === 'Esc' || e.keyCode === 27) { e.preventDefault(); post('action', { action: 'close' }); return; }
+  if (e.key === 'Escape' || e.key === 'Esc' || e.keyCode === 27) {
+    e.preventDefault();
+    if (!shop.classList.contains('hidden')) post('shopclose'); else post('action', { action: 'close' });
+    return;
+  }
   if (e.key === ' ' || e.key === 'Enter' || e.key === 'Tab' || e.key === 'Spacebar') { e.preventDefault(); if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); }
 }
 window.addEventListener('keydown', onKey);

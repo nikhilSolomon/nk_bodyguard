@@ -8,11 +8,85 @@ Config = {}
 Config.Command = 'bodyguard'
 Config.AdminOnly = true          -- true = needs the "command.bodyguard" ace (admins have "command" allow)
 
+---------------------------------------------------------------------------
+-- ROLES
+--  Admins (ESX group below, or anyone with the "command.bodyguard" ace): free, unlimited
+--  recruiting from the F9 panel, every toggle, free services.
+--  Citizens: hire guards at the Agency; each hire is a CONTRACT saved in the database that
+--  lasts until the guard is killed or dismissed (no refunds). Escort / air / medic cost money.
+---------------------------------------------------------------------------
+Config.AdminGroups = { 'admin', 'superadmin' }
+
+Config.Agency = {
+    Enabled = true,
+    Name = 'Bodyguard Agency',
+    -- Manager NPC you talk to (Legion Square, next to the ESX default spawn). z is snapped to the ground.
+    Ped = { model = 's_m_m_highsec_02', coords = vector4(226.6, -869.8, 30.49, 160.0), scenario = 'WORLD_HUMAN_CLIPBOARD' },
+    -- New hires appear here and walk over to you.
+    SpawnPoint = vector4(229.6, -872.4, 30.49, 160.0),
+    Blip = { sprite = 280, colour = 3, scale = 0.9 },
+    InteractDistance = 2.2,
+    MaxContracts = 4,                 -- active contracts per character (admins: Config.MaxGuards)
+    Accounts = { 'money', 'bank' },   -- pay from cash first, then bank (whole amount from one account)
+}
+
+-- Contract tiers sold at the Agency. price in $, health 200 = normal ped, accuracy 0-100.
+Config.Tiers = {
+    {
+        id = 'rookie', label = 'Rookie', color = '#94a3b8', price = 2500,
+        desc = 'Private security. Cheap, keeps trouble at arm\'s length.',
+        weapon = 'WEAPON_PISTOL50', weaponLabel = 'Pistol .50',
+        health = 300, armour = 50, accuracy = 45,
+        outfits = { { model = 's_m_m_security_01', label = 'Security' }, { model = 'mp_m_securoguard_01', label = 'Securoguard' } },
+    },
+    {
+        id = 'pro', label = 'Professional', color = '#3b82f6', price = 7500,
+        desc = 'Trained close-protection officer in a sharp suit.',
+        weapon = 'WEAPON_SMG', weaponLabel = 'SMG',
+        health = 450, armour = 100, accuracy = 65,
+        outfits = { { model = 's_m_m_highsec_01', label = 'Suit' }, { model = 's_m_m_highsec_02', label = 'Suit II' } },
+    },
+    {
+        id = 'elite', label = 'Elite', color = '#8b5cf6', price = 15000,
+        desc = 'Ex-special forces operator. Professional, hard to put down.',
+        weapon = 'WEAPON_CARBINERIFLE', weaponLabel = 'Carbine Rifle',
+        health = 600, armour = 200, accuracy = 80,
+        outfits = { { model = 's_m_y_blackops_01', label = 'Black Ops' }, { model = 's_m_y_blackops_02', label = 'Black Ops II' } },
+    },
+    {
+        id = 'heavy', label = 'Heavy Gunner', color = '#ef4444', price = 25000,
+        desc = 'Armoured tactical unit with a light machine gun.',
+        weapon = 'WEAPON_COMBATMG', weaponLabel = 'Combat MG',
+        health = 800, armour = 200, accuracy = 70,
+        outfits = { { model = 's_m_y_swat_01', label = 'SWAT' } },
+    },
+}
+
+-- Paid services for citizens (admins: free). Ordered from the F9 panel.
+Config.Services = {
+    escort = 2500,        -- spawn an escort car crewed by your spare guards
+    air = 10000,          -- call in an armed helicopter
+    healPerGuard = 750,   -- medic: full health + armour, per injured guard
+}
+
+-- Veterancy: kills are saved on the contract. Bonuses add to the tier's accuracy / armour.
+Config.Ranks = {
+    { kills = 0,  label = 'Recruit' },
+    { kills = 5,  label = 'Veteran', accuracy = 8 },
+    { kills = 15, label = 'Legend',  accuracy = 15, armour = 100 },
+}
+
+-- Names handed out to new guards (contracts and admin recruits)
+Config.Names = {
+    'Marcus', 'Viktor', 'Dmitri', 'Logan', 'Jack', 'Rico', 'Tommy', 'Andre', 'Kenji', 'Nikolai',
+    'Sergio', 'Malik', 'Dante', 'Hugo', 'Omar', 'Felix', 'Ivan', 'Carlos', 'Reese', 'Boris',
+}
+
 -- Keys (players can rebind in Settings > Key Bindings > FiveM)
 Config.PanelKey = 'F9'           -- open / close the squad control panel
 Config.AttackKey = 'CAPITAL'     -- Caps Lock: order guards to attack whatever you are aiming at
 
-Config.MaxGuards = 6
+Config.MaxGuards = 6             -- hard cap on guards following one player (admin recruits + contracts)
 
 -- Recruit options shown in the panel. First entry of each list is the default; 'random' picks any.
 Config.Models = {
@@ -39,8 +113,6 @@ Config.Armour = 200
 Config.Accuracy = 85             -- 0-100
 Config.Invincible = false        -- default; can be toggled live in Settings
 
-Config.WarpDistance = 70.0       -- on foot: a guard this far behind is moved next to you
-Config.LostDistance = 140.0      -- while you drive: a guard this far behind is moved to the road behind your car (never into a seat)
 Config.Blip = true               -- show guards on the minimap
 Config.Debug = true              -- print squad events to the F8 console
 
