@@ -46,7 +46,11 @@ local function notify(msg, kind)
         local s = tostring(msg)
         kind = s:find('~r~', 1, true) and 'error' or (s:find('~y~', 1, true) and 'warning' or (s:find('~g~', 1, true) and 'success' or 'inform'))
     end
-    Notify(msg, kind)
+    if Notify then
+        Notify(msg, kind)
+    else -- client/notify.lua not loaded (stale manifest): fall back to the GTA feed
+        BeginTextCommandThefeedPost('STRING'); AddTextComponentSubstringPlayerName(msg); EndTextCommandThefeedPostTicker(false, false)
+    end
 end
 
 local function dbg(fmt, ...)

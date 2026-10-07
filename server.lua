@@ -1,5 +1,9 @@
 -- nk_bodyguard server: roles, Agency contracts (oxmysql), paid services, chat command.
 -- Framework access goes through Bridge (bridge/<framework>/server.lua); nothing here is ESX-specific.
+if not Bridge or not MySQL then
+    print('^1[nk_bodyguard] bridge or MySQL library not loaded. The fxmanifest changed: run "refresh" and then "restart nk_bodyguard".^0')
+    return
+end
 
 ---------------------------------------------------------------------------
 -- schema
